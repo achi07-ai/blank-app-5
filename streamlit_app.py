@@ -2,8 +2,8 @@ import streamlit as st
 from supabase import create_client
 
 # --- 接続設定 ---
-url = "あなたのProject URL"
-key = "あなたのAPI Key"
+url = "https://kgtureqdqqnijptuaiwl.supabase.co"
+key = "sb_publishable_AnBfPKUeVEg2OhvB7zTIqA_f-qk0HYx"
 supabase = create_client(url, key)
 
 st.set_page_config(page_title="Supabase Todo", layout="centered")
