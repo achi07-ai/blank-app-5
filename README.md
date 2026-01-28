@@ -1,19 +1,41 @@
-# 🎈 Blank app template
+📅 Supabase カテゴリ別カレンダー & スケジューラー
+URL：https://deadline-calendar.streamlit.app/
 
-A simple Streamlit app template for you to modify!
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+Supabase Authによるユーザー認証と、カテゴリ別の自動リマインダー計算機能を備えた、Streamlitベースの高機能スケジュール管理アプリです。
+🌟 主な機能
+1. 🗓️ インテリジェント・カレンダー
 
-### How to run it on your own machine
+    フルカレンダー表示: 月・週・日単位での表示切り替えが可能。
 
-1. Install the requirements
+    ドラッグ＆ドロップ: 予定をマウスで動かすだけで、開始時間・終了時間を直感的に更新。
 
-   ```
-   $ pip install -r requirements.txt
-   ```
+    日本時間（JST）完全対応: タイムゾーンのズレ（9時間問題）を解消し、入力した通りの時間で正確に表示。
 
-2. Run the app
+2. 🔔 カテゴリ別自動リマインダー
 
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+予定のカテゴリに応じて、最適なリマインダー日を自動で算出します。
+
+    テスト: 予定日の 2週間前
+
+    課題: 予定日の 3日前
+
+    遊び・バイト: 予定日の 1日前
+
+    日用品: 予定日の 1ヶ月後（買い出しの備忘録など）
+
+3. 🔐 個人アカウント管理
+
+    ユーザー認証: Supabase Authによるログイン/新規登録機能を搭載。
+
+    データ分離: 行単位セキュリティ（RLS）の概念に基づき、自分が入れた予定のみが表示されるプライベートな構成。
+
+    完了チェック: 終わった予定にチェックを入れると、カレンダー上でグレーアウト（✅マーク付与）されます。
+
+🛠️ 技術スタック
+
+    Frontend: Streamlit
+
+    Backend: Supabase (PostgreSQL / Auth)
+
+    Library: streamlit-calendar, pytz (タイムゾーン処理用)
