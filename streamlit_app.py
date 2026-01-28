@@ -5,50 +5,42 @@ from datetime import datetime, timedelta, time
 from dateutil.relativedelta import relativedelta
 
 # --- 1. 接続設定 ---
-# Secretsから取得。キー名が secrets.toml と一致しているか確認してください。
 try:
     url = st.secrets["url"]
     key = st.secrets["key"]
     supabase = create_client(url, key)
 except Exception as e:
-    st.error(f"Secretsの設定エラー: {e}")
+    st.error(f"Secretsの設定を確認してください: {e}")
     st.stop()
 
-st.set_page_config(page_title="My Advanced Calendar", layout="wide")
+st.set_page_config(page_title="Advanced Task Calendar", layout="wide")
 
-# --- 2. ログイン・認証機能 (安定版) ---
+# --- 2. ログイン・認証機能 ---
 if "user" not in st.session_state:
     st.title("🔐 ログイン / 新規登録")
-    st.info("※ログインできない場合は、パスワードが6文字以上か、Confirm EmailがOFFか確認してください。")
-    
-    email = st.text_input("メールアドレス", placeholder="example@mail.com")
-    password = st.text_input("パスワード", type="password", placeholder="6文字以上")
+    email = st.text_input("メールアドレス")
+    password = st.text_input("パスワード", type="password")
     
     col1, col2 = st.columns(2)
-    
     if col1.button("ログイン", use_container_width=True):
         try:
-            # ログイン試行
             res = supabase.auth.sign_in_with_password({"email": email, "password": password})
             st.session_state.user = res.user
-            st.success("ログインしました！")
             st.rerun()
         except Exception as e:
-            # ログイン失敗時に具体的な理由を表示
-            st.error(f"ログインに失敗しました: {e}")
+            st.error(f"ログイン失敗: {e}")
             
     if col2.button("新規登録", use_container_width=True):
         try:
-            res = supabase.auth.sign_up({"email": email, "password": password})
-            st.info("ユーザー登録リクエストを送信しました。そのままログインできるか試してください。")
+            supabase.auth.sign_up({"email": email, "password": password})
+            st.info("登録しました。そのままログインしてください。")
         except Exception as e:
-            st.error(f"登録に失敗しました: {e}")
+            st.error(f"登録失敗: {e}")
     st.stop()
 
-# ログインユーザーのIDを取得
 user_id = st.session_state.user.id
 
-# --- 3. 便利関数 ---
+# --- 3. 便利関数（リマインダー・データ取得） ---
 def calculate_reminder(event_datetime, category):
     rules = {
         "テスト": timedelta(weeks=-2),
@@ -64,18 +56,18 @@ def get_my_todos():
     res = supabase.table("todos").select("*").eq("user_id", user_id).execute()
     return res.data
 
-# --- 4. サイドバー操作 ---
+# --- 4. サイドバー操作エリア ---
+current_todos = get_my_todos()
+
 with st.sidebar:
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
-        # セッションをクリアしてログアウト
         supabase.auth.sign_out()
         del st.session_state.user
         st.rerun()
     
     st.divider()
     mode = st.radio("操作メニュー", ["予定を追加", "編集・削除"])
-    current_todos = get_my_todos()
 
     if mode == "予定を追加":
         with st.form("add_form", clear_on_submit=True):
@@ -83,34 +75,30 @@ with st.sidebar:
             event_date = st.date_input("日付", datetime.now())
             
             t_col1, t_col2 = st.columns(2)
-            start_time = t_col1.time_input("開始", value=time(10, 0))
-            end_time = t_col2.time_input("終了", value=time(11, 0))
+            start_t = t_col1.time_input("開始時間", value=time(10, 0))
+            end_t = t_col2.time_input("終了時間", value=time(11, 0))
             
             cat = st.selectbox("カテゴリ", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"])
             
-            if st.form_submit_button("カレンダーに保存", use_container_width=True):
+            if st.form_submit_button("保存", use_container_width=True):
                 if title:
-                    start_dt = datetime.combine(event_date, start_time)
-                    end_dt = datetime.combine(event_date, end_time)
+                    start_dt = datetime.combine(event_date, start_t)
+                    end_dt = datetime.combine(event_date, end_t)
                     
                     if end_dt <= start_dt:
-                        st.error("終了時間は開始時間より後にしてください")
+                        st.error("終了時間は開始より後にしてください")
                     else:
                         rem = calculate_reminder(start_dt, cat)
                         supabase.table("todos").insert({
-                            "user_id": user_id,
-                            "title": title,
-                            "category": cat,
-                            "start_at": start_dt.isoformat(),
-                            "end_at": end_dt.isoformat(),
+                            "user_id": user_id, "title": title, "category": cat,
+                            "start_at": start_dt.isoformat(), "end_at": end_dt.isoformat(),
                             "reminder_at": rem.strftime('%Y-%m-%d') if rem else None
                         }).execute()
-                        st.success("追加しました！")
                         st.rerun()
 
     elif mode == "編集・削除" and current_todos:
-        target = st.selectbox("変更する予定を選択", current_todos, format_func=lambda x: f"{x['title']}")
-        if st.button("🗑️ この予定を削除", use_container_width=True):
+        target = st.selectbox("対象を選択", current_todos, format_func=lambda x: f"{x['title']}")
+        if st.button("🗑️ 削除", use_container_width=True):
             supabase.table("todos").delete().eq("id", target['id']).execute()
             st.rerun()
         
@@ -136,18 +124,30 @@ for item in current_todos:
         "borderColor": "transparent"
     })
 
+# カレンダーの表示設定
 cal_options = {
     "editable": "true",
     "selectable": "true",
-    "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
+    "headerToolbar": {
+        "left": "today prev,next",
+        "center": "title",
+        "right": "dayGridMonth,timeGridWeek,timeGridDay"
+    },
     "initialView": "dayGridMonth",
-    "slotMinTime": "06:00:00",
-    "slotMaxTime": "24:00:00",
+    "displayEventTime": True,      # 月表示でも時間を表示
+    "displayEventEnd": True,       # 終了時間も表示
+    "eventTimeFormat": {           # 24時間表記に設定
+        "hour": "2-digit",
+        "minute": "2-digit",
+        "hour12": False
+    },
+    "slotMinTime": "06:00:00",     # スケジュール表示開始（朝6時）
+    "slotMaxTime": "24:00:00",     # スケジュール表示終了（夜12時）
 }
 
 state = calendar(events=events, options=cal_options)
 
-# --- 6. ドラッグ＆ドロップ / サイズ変更時の更新 ---
+# --- 6. ドラッグ＆ドロップ時のデータ更新 ---
 if state.get("eventChange"):
     target_id = state["eventChange"]["event"]["id"]
     new_start = state["eventChange"]["event"]["start"]
@@ -158,9 +158,9 @@ if state.get("eventChange"):
         update_vals["end_at"] = new_end
         
     supabase.table("todos").update(update_vals).eq("id", target_id).execute()
-    st.toast("予定を更新しました")
+    st.toast("日時を更新しました")
 
-# --- 7. リマインダー通知エリア ---
+# --- 7. リマインダー通知 ---
 st.divider()
 st.subheader("🔔 近日のリマインダー")
 upcoming = [r for r in current_todos if r['reminder_at'] and not r.get('is_complete')]
