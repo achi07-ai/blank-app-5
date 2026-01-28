@@ -124,7 +124,7 @@ for item in current_todos:
         "borderColor": "transparent"
     })
 
-# カレンダーの表示設定
+# --- カレンダーの表示詳細設定 ---
 cal_options = {
     "editable": "true",
     "selectable": "true",
@@ -136,13 +136,13 @@ cal_options = {
     "initialView": "dayGridMonth",
     "displayEventTime": True,      # 月表示でも時間を表示
     "displayEventEnd": True,       # 終了時間も表示
-    "eventTimeFormat": {           # 24時間表記に設定
+    "eventTimeFormat": {           # 日本で馴染みのある24時間表記に設定
         "hour": "2-digit",
         "minute": "2-digit",
         "hour12": False
     },
-    "slotMinTime": "06:00:00",     # スケジュール表示開始（朝6時）
-    "slotMaxTime": "24:00:00",     # スケジュール表示終了（夜12時）
+    "slotMinTime": "06:00:00",     # 朝6時から表示
+    "slotMaxTime": "24:00:00",     # 夜12時まで表示
 }
 
 state = calendar(events=events, options=cal_options)
