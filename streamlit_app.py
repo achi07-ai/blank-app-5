@@ -9,81 +9,97 @@ url = st.secrets["url"]
 key = st.secrets["key"]
 supabase = create_client(url, key)
 
-st.set_page_config(page_title="Task Calendar", layout="wide")
-st.title("📅 カテゴリ別カレンダー & 自動リマインダー")
+st.set_page_config(page_title="My Private Calendar", layout="wide")
 
-# --- リマインダー計算ロジック ---
-def calculate_reminder(event_date, category):
-    if category == "テスト":
-        return event_date - timedelta(weeks=2)
-    elif category == "課題":
-        return event_date - timedelta(days=3)
-    elif category == "日用品":
-        return event_date + relativedelta(months=1)
-    elif category == "遊び":
-        return event_date - timedelta(days=1)
-    else: # その他
-        return None
-
-# --- 1. 新しい予定の追加 (サイドバー) ---
-with st.sidebar:
-    st.header("新しく予定を追加")
-    with st.form("add_event_form", clear_on_submit=True):
-        title = st.text_input("予定名")
-        event_date = st.date_input("予定日", datetime.now())
-        category = st.selectbox("項目", ["テスト", "課題", "日用品", "遊び", "その他"])
-        submitted = st.form_submit_button("保存")
-
-        if submitted and title:
-            # リマインダー日の計算
-            reminder_date = calculate_reminder(event_date, category)
-            reminder_str = reminder_date.strftime('%Y-%m-%d') if reminder_date else None
+# --- 簡易ログイン機能 ---
+if "user" not in st.session_state:
+    st.title("🔐 ログイン")
+    email = st.text_input("メールアドレス")
+    password = st.text_input("パスワード", type="password")
+    col1, col2 = st.columns(2)
+    
+    if col1.button("ログイン"):
+        try:
+            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            st.session_state.user = res.user
+            st.rerun()
+        except:
+            st.error("ログインに失敗しました")
             
-            # Supabaseへの保存
-            data = {
-                "title": title,
-                "start": event_date.strftime('%Y-%m-%d'),
-                "category": category,
-                "reminder_at": reminder_str
-            }
-            supabase.table("todos").insert(data).execute()
-            st.success(f"追加完了: {category}のリマインダーを設定しました")
+    if col2.button("新規登録"):
+        try:
+            supabase.auth.sign_up({"email": email, "password": password})
+            st.info("確認メールを送信しました（設定によります）")
+        except:
+            st.error("登録に失敗しました")
+    st.stop()
+
+# --- ログイン後のメイン画面 ---
+user_id = st.session_state.user.id
+st.sidebar.write(f"👤 {st.session_state.user.email}")
+if st.sidebar.button("ログアウト"):
+    del st.session_state.user
+    st.rerun()
+
+st.title("📅 カテゴリ別マイカレンダー")
+
+# リマインダー計算ロジック
+def calculate_reminder(event_date, category):
+    rules = {"テスト": timedelta(weeks=-2), "課題": timedelta(days=-3), "遊び": timedelta(days=-1)}
+    if category == "日用品": return event_date + relativedelta(months=1)
+    return event_date + rules.get(category, timedelta(0)) if category in rules else None
+
+# --- 1. 予定の追加・編集フォーム ---
+with st.sidebar:
+    st.header("予定の操作")
+    mode = st.radio("モード選択", ["新規追加", "編集・削除"])
+    
+    # ユーザー自身のデータのみ取得
+    response = supabase.table("todos").select("*").eq("user_id", user_id).execute()
+    todos_df = response.data
+
+    if mode == "新規追加":
+        with st.form("add_form"):
+            title = st.text_input("予定名")
+            event_date = st.date_input("予定日")
+            cat = st.selectbox("項目", ["テスト", "課題", "日用品", "遊び", "その他"])
+            if st.form_submit_button("保存"):
+                rem = calculate_reminder(event_date, cat)
+                supabase.table("todos").insert({
+                    "title": title, "start": str(event_date), "category": cat, 
+                    "reminder_at": str(rem) if rem else None, "user_id": user_id
+                }).execute()
+                st.rerun()
+    
+    elif mode == "編集・削除" and todos_df:
+        target = st.selectbox("対象を選択", todos_df, format_func=lambda x: x['title'])
+        with st.form("edit_form"):
+            new_title = st.text_input("予定名", value=target['title'])
+            new_done = st.checkbox("完了済み", value=target.get('is_complete', False))
+            if st.form_submit_button("更新"):
+                supabase.table("todos").update({"title": new_title, "is_complete": new_done}).eq("id", target['id']).execute()
+                st.rerun()
+        if st.button("🗑️ この予定を削除"):
+            supabase.table("todos").delete().eq("id", target['id']).execute()
             st.rerun()
 
-# --- 2. データの取得と整形 ---
-response = supabase.table("todos").select("*").execute()
+# --- 2. カレンダー表示 ---
 events = []
-for item in response.data:
-    # カレンダー表示用の色分け
-    colors = {
-        "テスト": "#FF4B4B", "課題": "#FFA421", 
-        "日用品": "#7792E3", "遊び": "#21C354", "その他": "#A3A8B4"
-    }
+colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "その他": "#A3A8B4"}
+
+for item in todos_df:
+    title_prefix = "✅ " if item.get('is_complete') else ""
     events.append({
-        "title": f"[{item['category']}] {item['title']}",
+        "title": f"{title_prefix}[{item['category']}] {item['title']}",
         "start": item['start'],
-        "backgroundColor": colors.get(item['category'], "#3D3333")
+        "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
+        "id": str(item['id'])
     })
 
-# --- 3. カレンダーの表示 ---
-calendar_options = {
-    "editable": "true",
-    "selectable": "true",
-    "headerToolbar": {
-        "left": "today prev,next",
-        "center": "title",
-        "right": "dayGridMonth,dayGridWeek,dayGridDay",
-    },
-    "initialView": "dayGridMonth",
-}
+calendar(events=events, options={"initialView": "dayGridMonth"})
 
-state = calendar(events=events, options=calendar_options)
-
-# --- 4. リマインダー確認エリア ---
-st.divider()
-st.subheader("🔔 近日のリマインダー設定一覧")
-reminders = supabase.table("todos").select("*").not_.is_("reminder_at", "null").order("reminder_at").execute()
-
-if reminders.data:
-    for r in reminders.data:
-        st.write(f"⏰ **{r['reminder_at']}**： {r['category']} 「{r['title']}」のリマインダー")
+# --- 3. リマインダー一覧 ---
+st.subheader("🔔 あなたのリマインダー")
+reminders = [r for r in todos_df if r['reminder_at'] and not r.get('is_complete')]
+for r in sorted(reminders, key=lambda x: x['reminder_at']):
+    st.write(f"⏰ {r['reminder_at']} : {r['title']}")
