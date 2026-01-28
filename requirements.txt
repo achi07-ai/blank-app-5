@@ -1,3 +1,4 @@
 streamlit
 supabase
-pip install streamlit-calendar python-dateutil
+streamlit-calendar
+python-dateutil
