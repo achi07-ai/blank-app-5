@@ -66,20 +66,24 @@ with st.sidebar:
             event_time = col_t.time_input("時間", value=datetime.strptime("10:00", "%H:%M").time())
             cat = st.selectbox("項目", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"])
             
-            if st.form_submit_button("保存"):
-                full_datetime = datetime.combine(event_date, event_time)
-                rem = calculate_reminder(full_datetime, cat)
-                supabase.table("todos").insert({
-                    "title": title,
-                    "start_at": full_datetime.isoformat(),
-                    "category": cat,
-                    "reminder_at": rem.strftime('%Y-%m-%d') if rem else None,
-                    "user_id": user_id,
-                    "is_complete": False
-                }).execute()
-                st.success("保存しました！")
-                st.rerun()
-
+            # --- 保存処理の部分（修正案） ---
+if st.form_submit_button("保存"):
+   　　　　 # 日付と時間を結合して、ISO形式（Supabaseが読み取れる形式）にする
+    full_datetime = datetime.combine(event_date, event_time)
+    
+    data_to_insert = {
+        "title": title,
+        "start_at": full_datetime.isoformat(), # ここを start ではなく start_at に
+        "category": cat,
+        "reminder_at": rem.strftime('%Y-%m-%d') if rem else None,
+        "user_id": user_id,
+        "is_complete": False
+    }
+    
+    # 保存実行
+    supabase.table("todos").insert(data_to_insert).execute()
+    st.success("保存しました！")
+    st.rerun()
     elif mode == "編集・削除" and todos_df:
         target = st.selectbox("予定を選択", todos_df, format_func=lambda x: f"{x['title']} ({x['start_at'][:10]})")
         if st.button("🗑️ 削除"):
