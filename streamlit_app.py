@@ -13,12 +13,33 @@ except Exception as e:
     st.error(f"Secretsの設定を確認してください: {e}")
     st.stop()
 
-st.set_page_config(page_title="Task Calendar Drag&Drop", layout="wide")
+st.set_page_config(page_title="Ultimate Task Calendar", layout="wide")
 
 # 日本標準時 (JST) を定義
 JST = pytz.timezone('Asia/Tokyo')
 
-# --- 2. ログイン / 新規登録機能 ---
+# --- 2. 予定をはっきり見せるためのカスタムCSS ---
+st.markdown("""
+    <style>
+    /* 予定のタイトルを太字にして改行を許可 */
+    .fc-event-title {
+        font-weight: bold !important;
+        white-space: normal !important;
+        font-size: 0.9em !important;
+        padding: 2px !important;
+    }
+    /* 1日のマスの最小高さを確保（予定が見えなくなるのを防ぐ） */
+    .fc-daygrid-day-frame {
+        min-height: 120px !important;
+    }
+    /* カレンダー全体のフォント調整 */
+    .fc {
+        font-family: sans-serif;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 3. ログイン / 新規登録機能 ---
 if "user" not in st.session_state:
     st.title("🔐 ログイン / 新規登録")
     email = st.text_input("メールアドレス")
@@ -39,14 +60,14 @@ if "user" not in st.session_state:
 
 user_id = st.session_state.user.id
 
-# --- 3. データ取得 ---
+# --- 4. データ取得 ---
 def get_my_todos():
     res = supabase.table("todos").select("*").eq("user_id", user_id).execute()
     return res.data
 
 current_todos = get_my_todos()
 
-# --- 4. サイドバー：操作エリア ---
+# --- 5. サイドバー：操作エリア ---
 with st.sidebar:
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
@@ -70,7 +91,6 @@ with st.sidebar:
                 if title:
                     start_dt = JST.localize(datetime.combine(event_date, start_t))
                     end_dt = JST.localize(datetime.combine(event_date, end_t))
-                    
                     supabase.table("todos").insert({
                         "user_id": user_id, "title": title, "category": cat,
                         "start_at": start_dt.isoformat(), "end_at": end_dt.isoformat(),
@@ -88,7 +108,7 @@ with st.sidebar:
             supabase.table("todos").update({"is_complete": is_done}).eq("id", target['id']).execute()
             st.rerun()
 
-# --- 5. メイン画面：カレンダー表示 ---
+# --- 6. メイン画面：カレンダー表示 ---
 st.title("📅 カテゴリ別マイカレンダー")
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
@@ -97,7 +117,7 @@ for item in current_todos:
     raw_start = datetime.fromisoformat(item['start_at'])
     raw_end = datetime.fromisoformat(item['end_at'])
     
-    # 表示用にタイムゾーン情報を消去（時差ズレ防止）
+    # 日本時間に変換してからタイムゾーン情報を消す（時差ズレ防止）
     local_start = raw_start.astimezone(JST).replace(tzinfo=None)
     local_end = raw_end.astimezone(JST).replace(tzinfo=None)
 
@@ -111,47 +131,38 @@ for item in current_todos:
         "borderColor": "transparent"
     })
 
-# ドラッグ＆ドロップを有効化するオプションを追加
 cal_options = {
-    "editable": "true", # これでドラッグ＆リサイズが可能になります
+    "editable": "true",
     "selectable": "true",
     "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
+    "initialView": "dayGridMonth",
+    "locale": "ja",
+    "dayMaxEvents": False,            # 予定を省略せず全て表示
+    "contentHeight": "auto",          # 高さを自動調整
+    "eventDisplay": "block",          # 予定を背景色付きのブロックで表示
     "displayEventTime": True,
     "displayEventEnd": True,
-    "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False},
-    "locale": "ja"
+    "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
 
-# カレンダーの描画と状態取得
 state = calendar(events=events, options=cal_options)
 
-# --- 6. 重要：ドラッグ＆ドロップ後のデータベース更新処理 ---
+# --- 7. ドラッグ＆ドロップ時のデータベース更新処理 ---
 if state.get("eventChange"):
     event_id = state["eventChange"]["event"]["id"]
     new_start_raw = state["eventChange"]["event"]["start"]
     new_end_raw = state["eventChange"]["event"].get("end")
     
-    # エラー回避のポイント: 
-    # fromisoformatで読み込む際、既にタイムゾーンがある場合はそのまま使い、
-    # なければJSTを付与するように処理を変更します。
-    
     def format_to_jst_iso(raw_time_str):
-        if not raw_time_str:
-            return None
-        # 文字列の末尾が 'Z' の場合は、標準的なISO形式に置換
+        if not raw_time_str: return None
         clean_time = raw_time_str.replace('Z', '+00:00')
         dt = datetime.fromisoformat(clean_time)
-        # 日本時間に変換してISO形式で返す
         return dt.astimezone(JST).isoformat()
 
-    update_data = {
-        "start_at": format_to_jst_iso(new_start_raw)
-    }
-    
+    update_data = {"start_at": format_to_jst_iso(new_start_raw)}
     if new_end_raw:
         update_data["end_at"] = format_to_jst_iso(new_end_raw)
         
-    # Supabaseを更新
     try:
         supabase.table("todos").update(update_data).eq("id", event_id).execute()
         st.toast("予定を移動しました！")
