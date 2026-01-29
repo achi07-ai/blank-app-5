@@ -131,18 +131,30 @@ if state.get("eventChange"):
     new_start_raw = state["eventChange"]["event"]["start"]
     new_end_raw = state["eventChange"]["event"].get("end")
     
-    # FullCalendarから渡される時間はUTC扱いなのでJSTに変換して保存
-    # 文字列の末尾のZ（UTC指定）を処理してlocalizeし直す
-    clean_start = new_start_raw.replace('Z', '')
+    # エラー回避のポイント: 
+    # fromisoformatで読み込む際、既にタイムゾーンがある場合はそのまま使い、
+    # なければJSTを付与するように処理を変更します。
+    
+    def format_to_jst_iso(raw_time_str):
+        if not raw_time_str:
+            return None
+        # 文字列の末尾が 'Z' の場合は、標準的なISO形式に置換
+        clean_time = raw_time_str.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(clean_time)
+        # 日本時間に変換してISO形式で返す
+        return dt.astimezone(JST).isoformat()
+
     update_data = {
-        "start_at": JST.localize(datetime.fromisoformat(clean_start)).isoformat()
+        "start_at": format_to_jst_iso(new_start_raw)
     }
     
     if new_end_raw:
-        clean_end = new_end_raw.replace('Z', '')
-        update_data["end_at"] = JST.localize(datetime.fromisoformat(clean_end)).isoformat()
+        update_data["end_at"] = format_to_jst_iso(new_end_raw)
         
     # Supabaseを更新
-    supabase.table("todos").update(update_data).eq("id", event_id).execute()
-    st.toast("予定を移動しました！")
-    st.rerun() # 最新のデータを再取得して表示を更新
+    try:
+        supabase.table("todos").update(update_data).eq("id", event_id).execute()
+        st.toast("予定を移動しました！")
+        st.rerun()
+    except Exception as e:
+        st.error(f"更新エラー: {e}")
