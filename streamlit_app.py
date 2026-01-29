@@ -18,28 +18,26 @@ st.set_page_config(page_title="Ultimate Task Calendar", layout="wide")
 # 日本標準時 (JST) を定義
 JST = pytz.timezone('Asia/Tokyo')
 
-# --- 2. 予定をはっきり見せるためのカスタムCSS ---
-# 行間（line-height）を調整して改行しても重ならないようにしました
+# --- 2. カスタムCSS ---
 st.markdown("""
     <style>
     .fc-event-title {
         font-weight: bold !important;
-        white-space: pre-wrap !important; /* 改行コードを有効にする設定 */
+        white-space: pre-wrap !important;
         font-size: 0.9em !important;
         padding: 4px !important;
-        line-height: 1.2 !important; /* 行間を調整 */
+        line-height: 1.2 !important;
     }
     .fc-daygrid-day-frame {
         min-height: 120px !important;
     }
-    .fc-event-time {
-        font-size: 0.8em !important;
-        margin-bottom: 2px;
+    .fc-event {
+        cursor: pointer; /* クリック可能であることを示す */
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. ログイン / 新規登録機能 ---
+# --- 3. ログイン機能 ---
 if "user" not in st.session_state:
     st.title("🔐 ログイン / 新規登録")
     email = st.text_input("メールアドレス")
@@ -67,7 +65,25 @@ def get_my_todos():
 
 current_todos = get_my_todos()
 
-# --- 5. サイドバー：操作エリア ---
+# --- 5. 詳細表示用ダイアログ機能 ---
+@st.dialog("予定の詳細")
+def show_event_details(event_info):
+    # event_infoからデータを抽出
+    title = event_info.get('title', '無題')
+    start_str = event_info.get('start', '')
+    end_str = event_info.get('end', '')
+    
+    # 表示用の整形
+    st.write(f"### {title}")
+    st.write(f"📅 **開始**: {start_str.replace('T', ' ')}")
+    if end_str:
+        st.write(f"⌛ **終了**: {end_str.replace('T', ' ')}")
+    
+    st.divider()
+    if st.button("閉じる", use_container_width=True):
+        st.rerun()
+
+# --- 6. サイドバー ---
 with st.sidebar:
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
@@ -108,7 +124,7 @@ with st.sidebar:
             supabase.table("todos").update({"is_complete": is_done}).eq("id", target['id']).execute()
             st.rerun()
 
-# --- 6. メイン画面：カレンダー表示 ---
+# --- 7. カレンダー表示 ---
 st.title("📅 カテゴリ別マイカレンダー")
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
@@ -116,18 +132,16 @@ colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "
 for item in current_todos:
     raw_start = datetime.fromisoformat(item['start_at'])
     raw_end = datetime.fromisoformat(item['end_at'])
-    
     local_start = raw_start.astimezone(JST).replace(tzinfo=None)
     local_end = raw_end.astimezone(JST).replace(tzinfo=None)
 
     prefix = "✅ " if item.get('is_complete') else ""
-    
-    # 【ここを修正】カテゴリの後に改行「\n」を入れるロジック
-    display_title = f"{prefix}[{item['category']}]\n{item['title']}"
+    # カテゴリの後に改行を入れる
+    display_title = f"[{item['category']}]\n{item['title']}"
 
     events.append({
         "id": str(item['id']),
-        "title": display_title, # 改行を含んだタイトル
+        "title": f"{prefix}{display_title}",
         "start": local_start.isoformat(),
         "end": local_end.isoformat(),
         "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
@@ -150,7 +164,17 @@ cal_options = {
 
 state = calendar(events=events, options=cal_options)
 
-# --- 7. ドラッグ＆ドロップ時のデータベース更新処理 ---
+# --- 8. クリックイベント処理（追加された機能） ---
+# 予定をクリックしたとき
+if state.get("eventClick"):
+    show_event_details(state["eventClick"]["event"])
+
+# 日付のマスをクリックしたとき（何もない場所）
+if state.get("dateClick"):
+    clicked_date = state["dateClick"]["date"]
+    st.toast(f"選択された日付: {clicked_date}")
+
+# --- 9. ドラッグ＆ドロップ時の更新処理 ---
 if state.get("eventChange"):
     event_id = state["eventChange"]["event"]["id"]
     new_start_raw = state["eventChange"]["event"]["start"]
