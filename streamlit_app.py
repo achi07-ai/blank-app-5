@@ -13,7 +13,7 @@ except Exception as e:
     st.error(f"Secretsの設定を確認してください: {e}")
     st.stop()
 
-st.set_page_config(page_title="Task Calendar Final", layout="wide")
+st.set_page_config(page_title="Task Calendar Drag&Drop", layout="wide")
 
 # 日本標準時 (JST) を定義
 JST = pytz.timezone('Asia/Tokyo')
@@ -68,7 +68,6 @@ with st.sidebar:
             
             if st.form_submit_button("保存", use_container_width=True):
                 if title:
-                    # 保存時はタイムゾーン付きで作成
                     start_dt = JST.localize(datetime.combine(event_date, start_t))
                     end_dt = JST.localize(datetime.combine(event_date, end_t))
                     
@@ -95,13 +94,10 @@ events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 
 for item in current_todos:
-    # --- ここが最重要：時差を発生させない変換 ---
-    # データベースから取得した文字列(2026-01-28T10:00:00+09:00)を、
-    # タイムゾーン情報無しの形式(2026-01-28 10:00:00)に強制変換します。
     raw_start = datetime.fromisoformat(item['start_at'])
     raw_end = datetime.fromisoformat(item['end_at'])
     
-    # 日本時間に変換してから、タイムゾーン情報を消す
+    # 表示用にタイムゾーン情報を消去（時差ズレ防止）
     local_start = raw_start.astimezone(JST).replace(tzinfo=None)
     local_end = raw_end.astimezone(JST).replace(tzinfo=None)
 
@@ -109,17 +105,44 @@ for item in current_todos:
     events.append({
         "id": str(item['id']),
         "title": f"{prefix}[{item['category']}] {item['title']}",
-        "start": local_start.isoformat(), # 時差計算の入る隙を与えない
+        "start": local_start.isoformat(),
         "end": local_end.isoformat(),
         "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
         "borderColor": "transparent"
     })
 
+# ドラッグ＆ドロップを有効化するオプションを追加
 cal_options = {
+    "editable": "true", # これでドラッグ＆リサイズが可能になります
+    "selectable": "true",
     "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
     "displayEventTime": True,
     "displayEventEnd": True,
     "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False},
     "locale": "ja"
 }
-calendar(events=events, options=cal_options)
+
+# カレンダーの描画と状態取得
+state = calendar(events=events, options=cal_options)
+
+# --- 6. 重要：ドラッグ＆ドロップ後のデータベース更新処理 ---
+if state.get("eventChange"):
+    event_id = state["eventChange"]["event"]["id"]
+    new_start_raw = state["eventChange"]["event"]["start"]
+    new_end_raw = state["eventChange"]["event"].get("end")
+    
+    # FullCalendarから渡される時間はUTC扱いなのでJSTに変換して保存
+    # 文字列の末尾のZ（UTC指定）を処理してlocalizeし直す
+    clean_start = new_start_raw.replace('Z', '')
+    update_data = {
+        "start_at": JST.localize(datetime.fromisoformat(clean_start)).isoformat()
+    }
+    
+    if new_end_raw:
+        clean_end = new_end_raw.replace('Z', '')
+        update_data["end_at"] = JST.localize(datetime.fromisoformat(clean_end)).isoformat()
+        
+    # Supabaseを更新
+    supabase.table("todos").update(update_data).eq("id", event_id).execute()
+    st.toast("予定を移動しました！")
+    st.rerun() # 最新のデータを再取得して表示を更新
