@@ -19,22 +19,22 @@ st.set_page_config(page_title="Ultimate Task Calendar", layout="wide")
 JST = pytz.timezone('Asia/Tokyo')
 
 # --- 2. 予定をはっきり見せるためのカスタムCSS ---
+# 行間（line-height）を調整して改行しても重ならないようにしました
 st.markdown("""
     <style>
-    /* 予定のタイトルを太字にして改行を許可 */
     .fc-event-title {
         font-weight: bold !important;
-        white-space: normal !important;
+        white-space: pre-wrap !important; /* 改行コードを有効にする設定 */
         font-size: 0.9em !important;
-        padding: 2px !important;
+        padding: 4px !important;
+        line-height: 1.2 !important; /* 行間を調整 */
     }
-    /* 1日のマスの最小高さを確保（予定が見えなくなるのを防ぐ） */
     .fc-daygrid-day-frame {
         min-height: 120px !important;
     }
-    /* カレンダー全体のフォント調整 */
-    .fc {
-        font-family: sans-serif;
+    .fc-event-time {
+        font-size: 0.8em !important;
+        margin-bottom: 2px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -117,14 +117,17 @@ for item in current_todos:
     raw_start = datetime.fromisoformat(item['start_at'])
     raw_end = datetime.fromisoformat(item['end_at'])
     
-    # 日本時間に変換してからタイムゾーン情報を消す（時差ズレ防止）
     local_start = raw_start.astimezone(JST).replace(tzinfo=None)
     local_end = raw_end.astimezone(JST).replace(tzinfo=None)
 
     prefix = "✅ " if item.get('is_complete') else ""
+    
+    # 【ここを修正】カテゴリの後に改行「\n」を入れるロジック
+    display_title = f"{prefix}[{item['category']}]\n{item['title']}"
+
     events.append({
         "id": str(item['id']),
-        "title": f"{prefix}[{item['category']}] {item['title']}",
+        "title": display_title, # 改行を含んだタイトル
         "start": local_start.isoformat(),
         "end": local_end.isoformat(),
         "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
@@ -137,9 +140,9 @@ cal_options = {
     "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
     "initialView": "dayGridMonth",
     "locale": "ja",
-    "dayMaxEvents": False,            # 予定を省略せず全て表示
-    "contentHeight": "auto",          # 高さを自動調整
-    "eventDisplay": "block",          # 予定を背景色付きのブロックで表示
+    "dayMaxEvents": False,
+    "contentHeight": "auto",
+    "eventDisplay": "block",
     "displayEventTime": True,
     "displayEventEnd": True,
     "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
