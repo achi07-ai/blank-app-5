@@ -13,34 +13,49 @@ except Exception as e:
     st.error(f"Secretsの設定を確認してください: {e}")
     st.stop()
 
-st.set_page_config(page_title="Ultimate Task Calendar", layout="wide")
+# アプリ名の設定
+APP_NAME = "マネたいむ。"
+st.set_page_config(page_title=APP_NAME, layout="wide")
 
 # 日本標準時 (JST) を定義
 JST = pytz.timezone('Asia/Tokyo')
 
 # --- 2. カスタムCSS ---
-st.markdown("""
+st.markdown(f"""
     <style>
-    .fc-event-title {
+    /* アプリタイトルの装飾 */
+    .main-title {{
+        font-size: 3rem !important;
+        font-weight: 800 !important;
+        color: #9B59B6;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 0px;
+    }}
+    .sub-title {{
+        font-size: 1.1rem;
+        color: #666;
+        margin-bottom: 2rem;
+    }}
+    .fc-event-title {{
         font-weight: bold !important;
         white-space: pre-wrap !important;
         font-size: 0.9em !important;
         padding: 4px !important;
         line-height: 1.2 !important;
-    }
-    .fc-daygrid-day-frame {
+    }}
+    .fc-daygrid-day-frame {{
         min-height: 120px !important;
-    }
-    .fc-event {
+    }}
+    .fc-event {{
         cursor: pointer;
-    }
-    .salary-box {
+    }}
+    .salary-box {{
         background-color: #f0f2f6;
         padding: 15px;
         border-radius: 10px;
         border-left: 5px solid #9B59B6;
         margin-bottom: 10px;
-    }
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -55,7 +70,9 @@ def calculate_reminder(event_date, category):
 
 # --- 4. ログイン機能 ---
 if "user" not in st.session_state:
-    st.title("🔐 ログイン / 新規登録")
+    st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
+    st.markdown("<p class='sub-title'>〜 時間とお金をスマートに管理 〜</p>", unsafe_allow_html=True)
+    
     email = st.text_input("メールアドレス")
     password = st.text_input("パスワード", type="password")
     col1, col2 = st.columns(2)
@@ -130,6 +147,7 @@ def show_event_details(event_id):
 
 # --- 8. サイドバー ---
 with st.sidebar:
+    st.markdown(f"## {APP_NAME}")
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
         supabase.auth.sign_out()
@@ -137,21 +155,14 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    # 【追加機能】パスワード変更
     with st.expander("🔐 パスワードを変更"):
         new_pw = st.text_input("新しいパスワード", type="password")
-        conf_pw = st.text_input("新しいパスワード（確認）", type="password")
-        if st.button("パスワードを更新", use_container_width=True):
-            if len(new_pw) < 6:
-                st.error("6文字以上で入力してください")
-            elif new_pw != conf_pw:
-                st.error("パスワードが一致しません")
-            else:
-                try:
-                    supabase.auth.update_user({"password": new_pw})
-                    st.success("更新完了！")
-                except Exception as e:
-                    st.error(f"エラー: {e}")
+        conf_pw = st.text_input("確認", type="password")
+        if st.button("更新", use_container_width=True):
+            if len(new_pw) >= 6 and new_pw == conf_pw:
+                supabase.auth.update_user({"password": new_pw})
+                st.success("更新完了！")
+            else: st.error("不備があります")
 
     st.divider()
     st.subheader("💰 給与設定")
@@ -160,8 +171,8 @@ with st.sidebar:
     col_wage, col_fixed = st.columns(2)
     st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
     st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000)
-    if st.button("給与設定を保存", use_container_width=True):
-        st.success("設定を更新しました")
+    if st.button("設定を保存", use_container_width=True):
+        st.success("保存しました")
 
     st.divider()
     if st.toggle("新規予定を追加"):
@@ -184,12 +195,13 @@ with st.sidebar:
                     st.rerun()
 
 # --- 9. メイン画面：給与 & カレンダー ---
-st.title("マネたいむ。")
+st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
+
 monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage, st.session_state.fixed_salary)
 col_a, col_b = st.columns([1, 2])
 with col_a:
     st.markdown(f"""<div class="salary-box">
-        <p style='margin:0; font-size:0.9em; color:#666;'>💰 今月の見込み給与 (時給+固定)</p>
+        <p style='margin:0; font-size:0.9em; color:#666;'>💰 今月の見込み給与</p>
         <h2 style='margin:0; color:#9B59B6;'>¥{monthly_salary:,}</h2>
     </div>""", unsafe_allow_html=True)
 with col_b:
@@ -201,6 +213,7 @@ with col_b:
             r = sorted(future, key=lambda x: x['reminder_at'])[0]
             st.warning(f"🔔 リマインド: {r['reminder_at']} [{r['category']}] {r['title']}")
 
+# カレンダー表示
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 for item in current_todos:
