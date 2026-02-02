@@ -36,10 +36,10 @@ st.markdown("""
     }
     .salary-box {
         background-color: #f0f2f6;
-        padding: 20px;
+        padding: 15px;
         border-radius: 10px;
         border-left: 5px solid #9B59B6;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -47,11 +47,8 @@ st.markdown("""
 # --- 3. 便利関数 ---
 def calculate_reminder(event_date, category):
     rules = {
-        "テスト": timedelta(weeks=-2),
-        "課題": timedelta(days=-3),
-        "遊び": timedelta(days=-1),
-        "バイト": timedelta(days=-1),
-        "日用品": timedelta(days=30)
+        "テスト": timedelta(weeks=-2), "課題": timedelta(days=-3),
+        "遊び": timedelta(days=-1), "バイト": timedelta(days=-1), "日用品": timedelta(days=30)
     }
     reminder_dt = event_date + rules.get(category, timedelta(0))
     return reminder_dt.strftime('%Y-%m-%d')
@@ -84,37 +81,61 @@ def get_my_todos():
 
 current_todos = get_my_todos()
 
-# --- 6. 給与計算ロジック ---
-def calculate_monthly_salary(todos, hourly_wage):
-    total_salary = 0
+# --- 6. 給与計算ロジック (時給+固定給) ---
+def calculate_monthly_salary(todos, hourly_wage, fixed_salary):
+    variable_salary = 0
     now = datetime.now(JST)
-    current_month = now.month
-    current_year = now.year
+    current_month, current_year = now.month, now.year
 
     for item in todos:
         if item['category'] == "バイト":
             start_dt = datetime.fromisoformat(item['start_at']).astimezone(JST)
-            # 今月のバイトのみ計算
             if start_dt.month == current_month and start_dt.year == current_year:
                 end_dt = datetime.fromisoformat(item['end_at']).astimezone(JST)
                 duration = end_dt - start_dt
                 hours = duration.total_seconds() / 3600
-                total_salary += hours * hourly_wage
-    return int(total_salary)
+                variable_salary += hours * hourly_wage
+    return int(variable_salary + fixed_salary)
 
-# --- 7. 詳細表示用ダイアログ ---
-@st.dialog("予定の詳細")
+# --- 7. 詳細表示・編集・削除ダイアログ ---
+@st.dialog("予定の詳細と編集")
 def show_event_details(event_id):
     item = next((x for x in current_todos if str(x['id']) == event_id), None)
     if item:
-        st.write(f"### {item['title']}")
-        st.write(f"🏷️ **カテゴリ**: {item['category']}")
-        st.write(f"📅 **開始**: {item['start_at'].replace('T', ' ')}")
-        if item.get('reminder_at'):
-            st.info(f"⏰ **リマインダー日**: {item['reminder_at']}")
+        st.subheader(f"📝 {item['title']}")
         
+        # 編集用フォーム
+        with st.form("edit_event_form"):
+            new_title = st.text_input("予定名", value=item['title'])
+            # 現在の時間を取得してデフォルト値に
+            curr_start = datetime.fromisoformat(item['start_at']).astimezone(JST)
+            curr_end = datetime.fromisoformat(item['end_at']).astimezone(JST)
+            
+            new_date = st.date_input("日付", curr_start.date())
+            col_t1, col_t2 = st.columns(2)
+            new_s_time = col_t1.time_input("開始", curr_start.time())
+            new_e_time = col_t2.time_input("終了", curr_end.time())
+            
+            new_cat = st.selectbox("カテゴリ", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"], 
+                                   index=["テスト", "課題", "日用品", "遊び", "バイト", "その他"].index(item['category']))
+            
+            submitted = st.form_submit_button("内容を更新", use_container_width=True)
+            if submitted:
+                new_start_dt = JST.localize(datetime.combine(new_date, new_s_time))
+                new_end_dt = JST.localize(datetime.combine(new_date, new_e_time))
+                rem_date = calculate_reminder(new_date, new_cat)
+                
+                supabase.table("todos").update({
+                    "title": new_title, "category": new_cat,
+                    "start_at": new_start_dt.isoformat(), "end_at": new_end_dt.isoformat(),
+                    "reminder_at": rem_date
+                }).eq("id", event_id).execute()
+                st.success("更新しました")
+                st.rerun()
+
         st.divider()
-        if st.button("閉じる", use_container_width=True):
+        if st.button("🗑️ この予定を削除する", use_container_width=True, type="secondary"):
+            supabase.table("todos").delete().eq("id", event_id).execute()
             st.rerun()
 
 # --- 8. サイドバー ---
@@ -126,35 +147,30 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    
-    # 【追加機能】時給入力
     st.subheader("💰 給与設定")
-    if "hourly_wage" not in st.session_state:
-        st.session_state.hourly_wage = 1200 # デフォルト
+    if "hourly_wage" not in st.session_state: st.session_state.hourly_wage = 1200
+    if "fixed_salary" not in st.session_state: st.session_state.fixed_salary = 0
+
+    col_wage, col_fixed = st.columns(2)
+    st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
+    st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000)
     
-    wage = st.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
-    if st.button("時給を保存"):
-        st.session_state.hourly_wage = wage
-        st.success("時給を更新しました")
+    if st.button("給与設定を保存", use_container_width=True):
+        st.success("設定を更新しました")
 
     st.divider()
-    mode = st.radio("操作メニュー", ["予定を追加", "編集・削除"])
-
-    if mode == "予定を追加":
+    if st.toggle("新規予定を追加"):
         with st.form("add_form", clear_on_submit=True):
             title = st.text_input("予定名")
             event_date = st.date_input("日付", datetime.now(JST).date())
-            t_col1, t_col2 = st.columns(2)
-            start_t = t_col1.time_input("開始", value=time(10, 0))
-            end_t = t_col2.time_input("終了", value=time(11, 0))
+            t1, t2 = st.columns(2)
+            start_t, end_t = t1.time_input("開始", value=time(10, 0)), t2.time_input("終了", value=time(11, 0))
             cat = st.selectbox("カテゴリ", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"])
-            
             if st.form_submit_button("保存", use_container_width=True):
                 if title:
                     start_dt = JST.localize(datetime.combine(event_date, start_t))
                     end_dt = JST.localize(datetime.combine(event_date, end_t))
                     rem_date = calculate_reminder(event_date, cat)
-                    
                     supabase.table("todos").insert({
                         "user_id": user_id, "title": title, "category": cat,
                         "start_at": start_dt.isoformat(), "end_at": end_dt.isoformat(),
@@ -162,76 +178,45 @@ with st.sidebar:
                     }).execute()
                     st.rerun()
 
-    elif mode == "編集・削除" and current_todos:
-        target = st.selectbox("予定を選択", current_todos, format_func=lambda x: f"{x['title']}")
-        if st.button("🗑️ 予定を削除", use_container_width=True):
-            supabase.table("todos").delete().eq("id", target['id']).execute()
-            st.rerun()
-        is_done = st.checkbox("完了済み", value=target.get('is_complete', False))
-        if st.button("更新", use_container_width=True):
-            supabase.table("todos").update({"is_complete": is_done}).eq("id", target['id']).execute()
-            st.rerun()
-
-# --- 9. メイン画面：給与表示 & カレンダー ---
+# --- 9. メイン画面：給与 & カレンダー ---
 st.title("📅 カテゴリ別マイカレンダー")
 
-# 【追加機能】月間給与の表示
-current_month_name = datetime.now(JST).strftime('%m月')
-monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage)
+monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage, st.session_state.fixed_salary)
 
 col_a, col_b = st.columns([1, 2])
 with col_a:
-    st.markdown(f"""
-        <div class="salary-box">
-            <p style='margin:0; font-size:1em; color:#666;'>💰 {current_month_name}の見込み給与</p>
-            <h2 style='margin:0; color:#9B59B6;'>¥{monthly_salary:,}</h2>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"""<div class="salary-box">
+        <p style='margin:0; font-size:0.9em; color:#666;'>💰 今月の見込み給与 (時給+固定)</p>
+        <h2 style='margin:0; color:#9B59B6;'>¥{monthly_salary:,}</h2>
+    </div>""", unsafe_allow_html=True)
 
 with col_b:
-    # リマインダー表示
     upcoming = [r for r in current_todos if r.get('reminder_at') and not r.get('is_complete')]
     if upcoming:
         today_str = datetime.now(JST).strftime('%Y-%m-%d')
-        future_reminders = [r for r in upcoming if r['reminder_at'] >= today_str]
-        if future_reminders:
-            r = sorted(future_reminders, key=lambda x: x['reminder_at'])[0]
-            st.warning(f"🔔 最短リマインド: {r['reminder_at']} [{r['category']}] {r['title']}")
+        future = [r for r in upcoming if r['reminder_at'] >= today_str]
+        if future:
+            r = sorted(future, key=lambda x: x['reminder_at'])[0]
+            st.warning(f"🔔 リマインド: {r['reminder_at']} [{r['category']}] {r['title']}")
 
-# カレンダー表示用データの準備
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 
 for item in current_todos:
-    raw_start = datetime.fromisoformat(item['start_at'])
-    raw_end = datetime.fromisoformat(item['end_at'])
-    local_start = raw_start.astimezone(JST).replace(tzinfo=None)
-    local_end = raw_end.astimezone(JST).replace(tzinfo=None)
-
+    raw_start, raw_end = datetime.fromisoformat(item['start_at']), datetime.fromisoformat(item['end_at'])
+    local_start, local_end = raw_start.astimezone(JST).replace(tzinfo=None), raw_end.astimezone(JST).replace(tzinfo=None)
     prefix = "✅ " if item.get('is_complete') else ""
-    display_title = f"[{item['category']}]\n{item['title']}"
-
     events.append({
-        "id": str(item['id']),
-        "title": f"{prefix}{display_title}",
-        "start": local_start.isoformat(),
-        "end": local_end.isoformat(),
+        "id": str(item['id']), "title": f"{prefix}[{item['category']}]\n{item['title']}",
+        "start": local_start.isoformat(), "end": local_end.isoformat(),
         "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
         "borderColor": "transparent"
     })
 
 cal_options = {
-    "editable": "true",
-    "selectable": "true",
-    "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
-    "initialView": "dayGridMonth",
-    "locale": "ja",
-    "dayMaxEvents": False,
-    "contentHeight": "auto",
-    "eventDisplay": "block",
-    "displayEventTime": True,
-    "displayEventEnd": True,
-    "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
+    "editable": "true", "selectable": "true", "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
+    "initialView": "dayGridMonth", "locale": "ja", "dayMaxEvents": False, "contentHeight": "auto", "eventDisplay": "block",
+    "displayEventTime": True, "displayEventEnd": True, "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
 
 state = calendar(events=events, options=cal_options)
@@ -242,19 +227,12 @@ if state.get("eventClick"):
 
 if state.get("eventChange"):
     event_id = state["eventChange"]["event"]["id"]
-    new_start_raw = state["eventChange"]["event"]["start"]
-    new_end_raw = state["eventChange"]["event"].get("end")
-    
-    def format_to_jst_iso(raw_time_str):
-        if not raw_time_str: return None
-        clean_time = raw_time_str.replace('Z', '+00:00')
-        dt = datetime.fromisoformat(clean_time)
+    new_s, new_e = state["eventChange"]["event"]["start"], state["eventChange"]["event"].get("end")
+    def to_jst(s):
+        dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
         return dt.astimezone(JST).isoformat()
-
-    update_data = {"start_at": format_to_jst_iso(new_start_raw)}
-    if new_end_raw:
-        update_data["end_at"] = format_to_jst_iso(new_end_raw)
-        
-    supabase.table("todos").update(update_data).eq("id", event_id).execute()
+    upd = {"start_at": to_jst(new_s)}
+    if new_e: upd["end_at"] = to_jst(new_e)
+    supabase.table("todos").update(upd).eq("id", event_id).execute()
     st.toast("予定を移動しました！")
     st.rerun()
