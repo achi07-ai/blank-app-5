@@ -179,7 +179,7 @@ with st.sidebar:
                     st.rerun()
 
 # --- 9. メイン画面：給与 & カレンダー ---
-st.title("百樹のお部屋")
+st.title("マネたいむ。")
 
 monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage, st.session_state.fixed_salary)
 
