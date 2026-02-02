@@ -32,12 +32,28 @@ st.markdown("""
         min-height: 120px !important;
     }
     .fc-event {
-        cursor: pointer; /* クリック可能であることを示す */
+        cursor: pointer;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. ログイン機能 ---
+# --- 3. 便利関数：リマインダー計算 (復活) ---
+def calculate_reminder(event_date, category):
+    """
+    カテゴリに応じて通知日を計算する
+    """
+    rules = {
+        "テスト": timedelta(weeks=-2),
+        "課題": timedelta(days=-3),
+        "遊び": timedelta(days=-1),
+        "バイト": timedelta(days=-1),
+        "日用品": timedelta(days=30) # 日用品は1ヶ月後
+    }
+    # 計算結果を返す（時間は考慮せず日付のみ）
+    reminder_dt = event_date + rules.get(category, timedelta(0))
+    return reminder_dt.strftime('%Y-%m-%d')
+
+# --- 4. ログイン機能 ---
 if "user" not in st.session_state:
     st.title("🔐 ログイン / 新規登録")
     email = st.text_input("メールアドレス")
@@ -58,32 +74,30 @@ if "user" not in st.session_state:
 
 user_id = st.session_state.user.id
 
-# --- 4. データ取得 ---
+# --- 5. データ取得 ---
 def get_my_todos():
     res = supabase.table("todos").select("*").eq("user_id", user_id).execute()
     return res.data
 
 current_todos = get_my_todos()
 
-# --- 5. 詳細表示用ダイアログ機能 ---
+# --- 6. 詳細表示用ダイアログ ---
 @st.dialog("予定の詳細")
-def show_event_details(event_info):
-    # event_infoからデータを抽出
-    title = event_info.get('title', '無題')
-    start_str = event_info.get('start', '')
-    end_str = event_info.get('end', '')
-    
-    # 表示用の整形
-    st.write(f"### {title}")
-    st.write(f"📅 **開始**: {start_str.replace('T', ' ')}")
-    if end_str:
-        st.write(f"⌛ **終了**: {end_str.replace('T', ' ')}")
-    
-    st.divider()
-    if st.button("閉じる", use_container_width=True):
-        st.rerun()
+def show_event_details(event_id):
+    # IDから該当する予定を検索
+    item = next((x for x in current_todos if str(x['id']) == event_id), None)
+    if item:
+        st.write(f"### {item['title']}")
+        st.write(f"🏷️ **カテゴリ**: {item['category']}")
+        st.write(f"📅 **開始**: {item['start_at'].replace('T', ' ')}")
+        if item.get('reminder_at'):
+            st.info(f"⏰ **リマインダー日**: {item['reminder_at']}")
+        
+        st.divider()
+        if st.button("閉じる", use_container_width=True):
+            st.rerun()
 
-# --- 6. サイドバー ---
+# --- 7. サイドバー ---
 with st.sidebar:
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
@@ -107,9 +121,17 @@ with st.sidebar:
                 if title:
                     start_dt = JST.localize(datetime.combine(event_date, start_t))
                     end_dt = JST.localize(datetime.combine(event_date, end_t))
+                    
+                    # 【復活】リマインダー日の計算
+                    rem_date = calculate_reminder(event_date, cat)
+                    
                     supabase.table("todos").insert({
-                        "user_id": user_id, "title": title, "category": cat,
-                        "start_at": start_dt.isoformat(), "end_at": end_dt.isoformat(),
+                        "user_id": user_id, 
+                        "title": title, 
+                        "category": cat,
+                        "start_at": start_dt.isoformat(), 
+                        "end_at": end_dt.isoformat(),
+                        "reminder_at": rem_date, # 保存
                         "is_complete": False
                     }).execute()
                     st.rerun()
@@ -124,8 +146,19 @@ with st.sidebar:
             supabase.table("todos").update({"is_complete": is_done}).eq("id", target['id']).execute()
             st.rerun()
 
-# --- 7. カレンダー表示 ---
+# --- 8. メイン画面：カレンダー表示 ---
 st.title("📅 カテゴリ別マイカレンダー")
+
+# 近日のリマインダー表示エリア
+upcoming = [r for r in current_todos if r.get('reminder_at') and not r.get('is_complete')]
+if upcoming:
+    st.subheader("🔔 近日のリマインダー")
+    # 今日以降のリマインダーを3件表示
+    today_str = datetime.now(JST).strftime('%Y-%m-%d')
+    future_reminders = [r for r in upcoming if r['reminder_at'] >= today_str]
+    for r in sorted(future_reminders, key=lambda x: x['reminder_at'])[:3]:
+        st.warning(f"⏰ **{r['reminder_at']}** : [{r['category']}] {r['title']}")
+
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 
@@ -136,7 +169,6 @@ for item in current_todos:
     local_end = raw_end.astimezone(JST).replace(tzinfo=None)
 
     prefix = "✅ " if item.get('is_complete') else ""
-    # カテゴリの後に改行を入れる
     display_title = f"[{item['category']}]\n{item['title']}"
 
     events.append({
@@ -164,17 +196,10 @@ cal_options = {
 
 state = calendar(events=events, options=cal_options)
 
-# --- 8. クリックイベント処理（追加された機能） ---
-# 予定をクリックしたとき
+# --- 9. イベント処理 ---
 if state.get("eventClick"):
-    show_event_details(state["eventClick"]["event"])
+    show_event_details(state["eventClick"]["event"]["id"])
 
-# 日付のマスをクリックしたとき（何もない場所）
-if state.get("dateClick"):
-    clicked_date = state["dateClick"]["date"]
-    st.toast(f"選択された日付: {clicked_date}")
-
-# --- 9. ドラッグ＆ドロップ時の更新処理 ---
 if state.get("eventChange"):
     event_id = state["eventChange"]["event"]["id"]
     new_start_raw = state["eventChange"]["event"]["start"]
@@ -190,9 +215,6 @@ if state.get("eventChange"):
     if new_end_raw:
         update_data["end_at"] = format_to_jst_iso(new_end_raw)
         
-    try:
-        supabase.table("todos").update(update_data).eq("id", event_id).execute()
-        st.toast("予定を移動しました！")
-        st.rerun()
-    except Exception as e:
-        st.error(f"更新エラー: {e}")
+    supabase.table("todos").update(update_data).eq("id", event_id).execute()
+    st.toast("予定を移動しました！")
+    st.rerun()
