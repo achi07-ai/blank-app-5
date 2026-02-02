@@ -3,4 +3,3 @@ supabase
 streamlit-calendar
 python-dateutil
 pytz
-extra-streamlit-components
