@@ -3,6 +3,7 @@ from supabase import create_client
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta, time
 import pytz
+import extra_streamlit_components as stx  # Cookie管理用
 
 # --- 1. 接続設定 ---
 try:
@@ -17,77 +18,68 @@ except Exception as e:
 APP_NAME = "マネたいむ。"
 st.set_page_config(page_title=APP_NAME, layout="wide")
 
+# Cookieマネージャーの初期化
+cookie_manager = stx.CookieManager()
+
 # 日本標準時 (JST) を定義
 JST = pytz.timezone('Asia/Tokyo')
 
-# --- 2. カスタムCSS ---
+# --- 2. カスタムCSS (変更なし) ---
 st.markdown(f"""
     <style>
-    /* アプリタイトルの装飾 */
-    .main-title {{
-        font-size: 3rem !important;
-        font-weight: 800 !important;
-        color: #9B59B6;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 0px;
-    }}
-    .sub-title {{
-        font-size: 1.1rem;
-        color: #666;
-        margin-bottom: 2rem;
-    }}
-    .fc-event-title {{
-        font-weight: bold !important;
-        white-space: pre-wrap !important;
-        font-size: 0.9em !important;
-        padding: 4px !important;
-        line-height: 1.2 !important;
-    }}
-    .fc-daygrid-day-frame {{
-        min-height: 120px !important;
-    }}
-    .fc-event {{
-        cursor: pointer;
-    }}
-    .salary-box {{
-        background-color: #f0f2f6;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #9B59B6;
-        margin-bottom: 10px;
-    }}
+    .main-title {{ font-size: 3rem !important; font-weight: 800 !important; color: #9B59B6; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); margin-bottom: 0px; }}
+    .sub-title {{ font-size: 1.1rem; color: #666; margin-bottom: 2rem; }}
+    .fc-event-title {{ font-weight: bold !important; white-space: pre-wrap !important; font-size: 0.9em !important; padding: 4px !important; line-height: 1.2 !important; }}
+    .fc-daygrid-day-frame {{ min-height: 120px !important; }}
+    .fc-event {{ cursor: pointer; }}
+    .salary-box {{ background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #9B59B6; margin-bottom: 10px; }}
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. 便利関数 ---
 def calculate_reminder(event_date, category):
-    rules = {
-        "テスト": timedelta(weeks=-2), "課題": timedelta(days=-3),
-        "遊び": timedelta(days=-1), "バイト": timedelta(days=-1), "日用品": timedelta(days=30)
-    }
+    rules = { "テスト": timedelta(weeks=-2), "課題": timedelta(days=-3), "遊び": timedelta(days=-1), "バイト": timedelta(days=-1), "日用品": timedelta(days=30) }
     reminder_dt = event_date + rules.get(category, timedelta(0))
     return reminder_dt.strftime('%Y-%m-%d')
 
-# --- 4. ログイン機能 ---
+# --- 4. ログイン・自動ログイン機能 ---
+# Cookieからログイン情報を取得
+saved_user_id = cookie_manager.get("manetime_user_id")
+saved_user_email = cookie_manager.get("manetime_user_email")
+
 if "user" not in st.session_state:
-    st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='sub-title'>〜 時間とお金をスマートに管理 〜</p>", unsafe_allow_html=True)
-    
-    email = st.text_input("メールアドレス")
-    password = st.text_input("パスワード", type="password")
-    col1, col2 = st.columns(2)
-    if col1.button("ログイン", use_container_width=True):
-        try:
-            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-            st.session_state.user = res.user
-            st.rerun()
-        except Exception as e: st.error(f"ログイン失敗: {e}")
-    if col2.button("新規登録", use_container_width=True):
-        try:
-            supabase.auth.sign_up({"email": email, "password": password})
-            st.info("登録しました。そのままログインしてください。")
-        except Exception as e: st.error(f"登録失敗: {e}")
-    st.stop()
+    # Cookieに情報がある場合は自動ログインを試みる
+    if saved_user_id and saved_user_email:
+        # 仮のユーザーオブジェクトを作成してセッションに入れる
+        class DummyUser:
+            def __init__(self, id, email):
+                self.id = id
+                self.email = email
+        st.session_state.user = DummyUser(saved_user_id, saved_user_email)
+    else:
+        st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
+        st.markdown("<p class='sub-title'>〜 時間とお金をスマートに管理 〜</p>", unsafe_allow_html=True)
+        
+        email = st.text_input("メールアドレス")
+        password = st.text_input("パスワード", type="password")
+        col1, col2 = st.columns(2)
+        
+        if col1.button("ログイン", use_container_width=True):
+            try:
+                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                st.session_state.user = res.user
+                # Cookieに情報を保存 (有効期限30日)
+                cookie_manager.set("manetime_user_id", res.user.id, expires_at=datetime.now() + timedelta(days=30))
+                cookie_manager.set("manetime_user_email", res.user.email, expires_at=datetime.now() + timedelta(days=30))
+                st.rerun()
+            except Exception as e: st.error(f"ログイン失敗: {e}")
+            
+        if col2.button("新規登録", use_container_width=True):
+            try:
+                supabase.auth.sign_up({"email": email, "password": password})
+                st.info("登録しました。そのままログインしてください。")
+            except Exception as e: st.error(f"登録失敗: {e}")
+        st.stop()
 
 user_id = st.session_state.user.id
 
@@ -98,7 +90,7 @@ def get_my_todos():
 
 current_todos = get_my_todos()
 
-# --- 6. 給与計算ロジック ---
+# --- 6. 給与計算ロジック (変更なし) ---
 def calculate_monthly_salary(todos, hourly_wage, fixed_salary):
     variable_salary = 0
     now = datetime.now(JST)
@@ -150,6 +142,9 @@ with st.sidebar:
     st.markdown(f"## {APP_NAME}")
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
+        # Cookieを削除
+        cookie_manager.delete("manetime_user_id")
+        cookie_manager.delete("manetime_user_email")
         supabase.auth.sign_out()
         del st.session_state.user
         st.rerun()
