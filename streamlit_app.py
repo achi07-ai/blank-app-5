@@ -188,11 +188,30 @@ for item in current_todos:
         "allDay": False
     })
 
+# --- カレンダーの表示設定の改良 ---
 cal_options = {
-    "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
-    "locale": "ja", "slotMinTime": "00:00:00", "slotMaxTime": "24:00:00", "editable": True,
+    "initialView": "dayGridMonth",
+    "headerToolbar": {
+        "left": "today prev,next",
+        "center": "title",
+        "right": "dayGridMonth,timeGridWeek,timeGridDay"
+    },
+    "locale": "ja",
+    "slotMinTime": "00:00:00",
+    "slotMaxTime": "24:00:00",
+    "allDaySlot": False,
+    "editable": True,
+    # ↓↓↓ 月表示でもブロック形式（色付き背景）にするための重要設定 ↓↓↓
+    "eventDisplay": "block", 
+    "dayMaxEvents": True, # 予定が多い場合に「+他x件」と表示して枠を崩さない
+    "eventTimeFormat": {
+        "hour": "2-digit",
+        "minute": "2-digit",
+        "hour12": False
+    }
 }
-state = calendar(events=events, options=cal_options, key="manetime_cal")
+
+state = calendar(events=events, options=cal_options, key="manetime_cal_final")
 
 if state.get("eventClick"): show_event_details(state["eventClick"]["event"]["id"])
 if state.get("eventChange"):
