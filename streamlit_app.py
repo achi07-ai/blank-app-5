@@ -34,22 +34,25 @@ st.markdown("""
     .fc-event {
         cursor: pointer;
     }
+    .salary-box {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #9B59B6;
+        margin-bottom: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 便利関数：リマインダー計算 (復活) ---
+# --- 3. 便利関数 ---
 def calculate_reminder(event_date, category):
-    """
-    カテゴリに応じて通知日を計算する
-    """
     rules = {
         "テスト": timedelta(weeks=-2),
         "課題": timedelta(days=-3),
         "遊び": timedelta(days=-1),
         "バイト": timedelta(days=-1),
-        "日用品": timedelta(days=30) # 日用品は1ヶ月後
+        "日用品": timedelta(days=30)
     }
-    # 計算結果を返す（時間は考慮せず日付のみ）
     reminder_dt = event_date + rules.get(category, timedelta(0))
     return reminder_dt.strftime('%Y-%m-%d')
 
@@ -81,10 +84,27 @@ def get_my_todos():
 
 current_todos = get_my_todos()
 
-# --- 6. 詳細表示用ダイアログ ---
+# --- 6. 給与計算ロジック ---
+def calculate_monthly_salary(todos, hourly_wage):
+    total_salary = 0
+    now = datetime.now(JST)
+    current_month = now.month
+    current_year = now.year
+
+    for item in todos:
+        if item['category'] == "バイト":
+            start_dt = datetime.fromisoformat(item['start_at']).astimezone(JST)
+            # 今月のバイトのみ計算
+            if start_dt.month == current_month and start_dt.year == current_year:
+                end_dt = datetime.fromisoformat(item['end_at']).astimezone(JST)
+                duration = end_dt - start_dt
+                hours = duration.total_seconds() / 3600
+                total_salary += hours * hourly_wage
+    return int(total_salary)
+
+# --- 7. 詳細表示用ダイアログ ---
 @st.dialog("予定の詳細")
 def show_event_details(event_id):
-    # IDから該当する予定を検索
     item = next((x for x in current_todos if str(x['id']) == event_id), None)
     if item:
         st.write(f"### {item['title']}")
@@ -97,7 +117,7 @@ def show_event_details(event_id):
         if st.button("閉じる", use_container_width=True):
             st.rerun()
 
-# --- 7. サイドバー ---
+# --- 8. サイドバー ---
 with st.sidebar:
     st.write(f"👤 {st.session_state.user.email}")
     if st.button("ログアウト", use_container_width=True):
@@ -105,6 +125,18 @@ with st.sidebar:
         del st.session_state.user
         st.rerun()
     
+    st.divider()
+    
+    # 【追加機能】時給入力
+    st.subheader("💰 給与設定")
+    if "hourly_wage" not in st.session_state:
+        st.session_state.hourly_wage = 1200 # デフォルト
+    
+    wage = st.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
+    if st.button("時給を保存"):
+        st.session_state.hourly_wage = wage
+        st.success("時給を更新しました")
+
     st.divider()
     mode = st.radio("操作メニュー", ["予定を追加", "編集・削除"])
 
@@ -121,18 +153,12 @@ with st.sidebar:
                 if title:
                     start_dt = JST.localize(datetime.combine(event_date, start_t))
                     end_dt = JST.localize(datetime.combine(event_date, end_t))
-                    
-                    # 【復活】リマインダー日の計算
                     rem_date = calculate_reminder(event_date, cat)
                     
                     supabase.table("todos").insert({
-                        "user_id": user_id, 
-                        "title": title, 
-                        "category": cat,
-                        "start_at": start_dt.isoformat(), 
-                        "end_at": end_dt.isoformat(),
-                        "reminder_at": rem_date, # 保存
-                        "is_complete": False
+                        "user_id": user_id, "title": title, "category": cat,
+                        "start_at": start_dt.isoformat(), "end_at": end_dt.isoformat(),
+                        "reminder_at": rem_date, "is_complete": False
                     }).execute()
                     st.rerun()
 
@@ -146,19 +172,33 @@ with st.sidebar:
             supabase.table("todos").update({"is_complete": is_done}).eq("id", target['id']).execute()
             st.rerun()
 
-# --- 8. メイン画面：カレンダー表示 ---
+# --- 9. メイン画面：給与表示 & カレンダー ---
 st.title("📅 カテゴリ別マイカレンダー")
 
-# 近日のリマインダー表示エリア
-upcoming = [r for r in current_todos if r.get('reminder_at') and not r.get('is_complete')]
-if upcoming:
-    st.subheader("🔔 近日のリマインダー")
-    # 今日以降のリマインダーを3件表示
-    today_str = datetime.now(JST).strftime('%Y-%m-%d')
-    future_reminders = [r for r in upcoming if r['reminder_at'] >= today_str]
-    for r in sorted(future_reminders, key=lambda x: x['reminder_at'])[:3]:
-        st.warning(f"⏰ **{r['reminder_at']}** : [{r['category']}] {r['title']}")
+# 【追加機能】月間給与の表示
+current_month_name = datetime.now(JST).strftime('%m月')
+monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage)
 
+col_a, col_b = st.columns([1, 2])
+with col_a:
+    st.markdown(f"""
+        <div class="salary-box">
+            <p style='margin:0; font-size:1em; color:#666;'>💰 {current_month_name}の見込み給与</p>
+            <h2 style='margin:0; color:#9B59B6;'>¥{monthly_salary:,}</h2>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_b:
+    # リマインダー表示
+    upcoming = [r for r in current_todos if r.get('reminder_at') and not r.get('is_complete')]
+    if upcoming:
+        today_str = datetime.now(JST).strftime('%Y-%m-%d')
+        future_reminders = [r for r in upcoming if r['reminder_at'] >= today_str]
+        if future_reminders:
+            r = sorted(future_reminders, key=lambda x: x['reminder_at'])[0]
+            st.warning(f"🔔 最短リマインド: {r['reminder_at']} [{r['category']}] {r['title']}")
+
+# カレンダー表示用データの準備
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 
@@ -196,7 +236,7 @@ cal_options = {
 
 state = calendar(events=events, options=cal_options)
 
-# --- 9. イベント処理 ---
+# --- 10. イベント処理 ---
 if state.get("eventClick"):
     show_event_details(state["eventClick"]["event"]["id"])
 
