@@ -81,12 +81,11 @@ def get_my_todos():
 
 current_todos = get_my_todos()
 
-# --- 6. 給与計算ロジック (時給+固定給) ---
+# --- 6. 給与計算ロジック ---
 def calculate_monthly_salary(todos, hourly_wage, fixed_salary):
     variable_salary = 0
     now = datetime.now(JST)
     current_month, current_year = now.month, now.year
-
     for item in todos:
         if item['category'] == "バイト":
             start_dt = datetime.fromisoformat(item['start_at']).astimezone(JST)
@@ -103,28 +102,20 @@ def show_event_details(event_id):
     item = next((x for x in current_todos if str(x['id']) == event_id), None)
     if item:
         st.subheader(f"📝 {item['title']}")
-        
-        # 編集用フォーム
         with st.form("edit_event_form"):
             new_title = st.text_input("予定名", value=item['title'])
-            # 現在の時間を取得してデフォルト値に
             curr_start = datetime.fromisoformat(item['start_at']).astimezone(JST)
             curr_end = datetime.fromisoformat(item['end_at']).astimezone(JST)
-            
             new_date = st.date_input("日付", curr_start.date())
             col_t1, col_t2 = st.columns(2)
             new_s_time = col_t1.time_input("開始", curr_start.time())
             new_e_time = col_t2.time_input("終了", curr_end.time())
-            
             new_cat = st.selectbox("カテゴリ", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"], 
                                    index=["テスト", "課題", "日用品", "遊び", "バイト", "その他"].index(item['category']))
-            
-            submitted = st.form_submit_button("内容を更新", use_container_width=True)
-            if submitted:
+            if st.form_submit_button("内容を更新", use_container_width=True):
                 new_start_dt = JST.localize(datetime.combine(new_date, new_s_time))
                 new_end_dt = JST.localize(datetime.combine(new_date, new_e_time))
                 rem_date = calculate_reminder(new_date, new_cat)
-                
                 supabase.table("todos").update({
                     "title": new_title, "category": new_cat,
                     "start_at": new_start_dt.isoformat(), "end_at": new_end_dt.isoformat(),
@@ -132,7 +123,6 @@ def show_event_details(event_id):
                 }).eq("id", event_id).execute()
                 st.success("更新しました")
                 st.rerun()
-
         st.divider()
         if st.button("🗑️ この予定を削除する", use_container_width=True, type="secondary"):
             supabase.table("todos").delete().eq("id", event_id).execute()
@@ -147,14 +137,29 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
+    # 【追加機能】パスワード変更
+    with st.expander("🔐 パスワードを変更"):
+        new_pw = st.text_input("新しいパスワード", type="password")
+        conf_pw = st.text_input("新しいパスワード（確認）", type="password")
+        if st.button("パスワードを更新", use_container_width=True):
+            if len(new_pw) < 6:
+                st.error("6文字以上で入力してください")
+            elif new_pw != conf_pw:
+                st.error("パスワードが一致しません")
+            else:
+                try:
+                    supabase.auth.update_user({"password": new_pw})
+                    st.success("更新完了！")
+                except Exception as e:
+                    st.error(f"エラー: {e}")
+
+    st.divider()
     st.subheader("💰 給与設定")
     if "hourly_wage" not in st.session_state: st.session_state.hourly_wage = 1200
     if "fixed_salary" not in st.session_state: st.session_state.fixed_salary = 0
-
     col_wage, col_fixed = st.columns(2)
     st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
     st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000)
-    
     if st.button("給与設定を保存", use_container_width=True):
         st.success("設定を更新しました")
 
@@ -179,17 +184,14 @@ with st.sidebar:
                     st.rerun()
 
 # --- 9. メイン画面：給与 & カレンダー ---
-st.title("マネたいむ。")
-
+st.title("📅 カテゴリ別マイカレンダー")
 monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage, st.session_state.fixed_salary)
-
 col_a, col_b = st.columns([1, 2])
 with col_a:
     st.markdown(f"""<div class="salary-box">
         <p style='margin:0; font-size:0.9em; color:#666;'>💰 今月の見込み給与 (時給+固定)</p>
         <h2 style='margin:0; color:#9B59B6;'>¥{monthly_salary:,}</h2>
     </div>""", unsafe_allow_html=True)
-
 with col_b:
     upcoming = [r for r in current_todos if r.get('reminder_at') and not r.get('is_complete')]
     if upcoming:
@@ -201,7 +203,6 @@ with col_b:
 
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
-
 for item in current_todos:
     raw_start, raw_end = datetime.fromisoformat(item['start_at']), datetime.fromisoformat(item['end_at'])
     local_start, local_end = raw_start.astimezone(JST).replace(tzinfo=None), raw_end.astimezone(JST).replace(tzinfo=None)
@@ -218,13 +219,11 @@ cal_options = {
     "initialView": "dayGridMonth", "locale": "ja", "dayMaxEvents": False, "contentHeight": "auto", "eventDisplay": "block",
     "displayEventTime": True, "displayEventEnd": True, "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
-
 state = calendar(events=events, options=cal_options)
 
 # --- 10. イベント処理 ---
 if state.get("eventClick"):
     show_event_details(state["eventClick"]["event"]["id"])
-
 if state.get("eventChange"):
     event_id = state["eventChange"]["event"]["id"]
     new_s, new_e = state["eventChange"]["event"]["start"], state["eventChange"]["event"].get("end")
