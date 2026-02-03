@@ -68,17 +68,23 @@ if "user" not in st.session_state:
 
 user_id = st.session_state.user.id
 
-# --- 5. 設定・データ取得 ---
+# --- 4. データ・設定取得 (エラーハンドリング強化版) ---
 def get_settings():
-    res = supabase.table("settings").select("*").eq("user_id", user_id).execute()
-    if res.data: return res.data[0]
-    initial = {"user_id": user_id, "hourly_wage": 1200, "fixed_salary": 0}
-    supabase.table("settings").insert(initial).execute()
-    return initial
+    try:
+        res = supabase.table("settings").select("*").eq("user_id", user_id).execute()
+        if res.data:
+            return res.data[0]
+        else:
+            # データがない場合は新規作成を試みる
+            initial = {"user_id": user_id, "hourly_wage": 1200, "fixed_salary": 0}
+            supabase.table("settings").insert(initial).execute()
+            return initial
+    except Exception as e:
+        # 万が一DB接続でエラーが出た場合のバックアップ（一時的な値）
+        st.warning("設定テーブルが見つからないため、デフォルト値を使用します。")
+        return {"hourly_wage": 1200, "fixed_salary": 0}
 
 settings = get_settings()
-current_todos = supabase.table("todos").select("*").eq("user_id", user_id).execute().data
-
 # --- 6. 詳細ダイアログ ---
 @st.dialog("予定の編集")
 def show_event_details(event_id):
