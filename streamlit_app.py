@@ -23,7 +23,6 @@ JST = pytz.timezone('Asia/Tokyo')
 # --- 2. カスタムCSS ---
 st.markdown(f"""
     <style>
-    /* アプリタイトルの装飾 */
     .main-title {{
         font-size: 3rem !important;
         font-weight: 800 !important;
@@ -70,19 +69,19 @@ def calculate_reminder(event_date, category):
 
 # --- 4. ログイン機能 ---
 if "user" not in st.session_state:
-    st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
+    st.markdown(f<h1 class='main-title'>{APP_NAME}</h1>, unsafe_allow_html=True)
     st.markdown("<p class='sub-title'>〜 時間とお金をスマートに管理 〜</p>", unsafe_allow_html=True)
     
     email = st.text_input("メールアドレス", key="login_email")
     password = st.text_input("パスワード", type="password", key="login_pw")
     col1, col2 = st.columns(2)
-    if col1.button("ログイン", use_container_width=True, key="login_btn"):
+    if col1.button("ログイン", use_container_width=True):
         try:
             res = supabase.auth.sign_in_with_password({"email": email, "password": password})
             st.session_state.user = res.user
             st.rerun()
         except Exception as e: st.error(f"ログイン失敗: {e}")
-    if col2.button("新規登録", use_container_width=True, key="signup_btn"):
+    if col2.button("新規登録", use_container_width=True):
         try:
             supabase.auth.sign_up({"email": email, "password": password})
             st.info("登録しました。そのままログインしてください。")
@@ -126,8 +125,9 @@ def show_event_details(event_id):
             col_t1, col_t2 = st.columns(2)
             new_s_time = col_t1.time_input("開始", curr_start.time())
             new_e_time = col_t2.time_input("終了", curr_end.time())
-            new_cat = st.selectbox("カテゴリ", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"], 
-                                   index=["テスト", "課題", "日用品", "遊び", "バイト", "その他"].index(item['category']))
+            categories = ["テスト", "課題", "日用品", "遊び", "バイト", "その他"]
+            new_cat = st.selectbox("カテゴリ", categories, index=categories.index(item['category']))
+            
             if st.form_submit_button("内容を更新", use_container_width=True):
                 new_start_dt = JST.localize(datetime.combine(new_date, new_s_time))
                 new_end_dt = JST.localize(datetime.combine(new_date, new_e_time))
@@ -139,24 +139,24 @@ def show_event_details(event_id):
                 }).eq("id", event_id).execute()
                 st.rerun()
         st.divider()
-        if st.button("🗑️ この予定を削除する", use_container_width=True, type="secondary", key=f"del_{event_id}"):
+        if st.button("🗑️ この予定を削除する", use_container_width=True, type="secondary"):
             supabase.table("todos").delete().eq("id", event_id).execute()
             st.rerun()
 
-# --- 8. サイドバー ---
+# --- 8. サイドバー (修正版) ---
 with st.sidebar:
     st.markdown(f"## {APP_NAME}")
     st.write(f"👤 {st.session_state.user.email}")
-    if st.button("ログアウト", use_container_width=True, key="logout_btn"):
+    if st.button("ログアウト", use_container_width=True):
         supabase.auth.sign_out()
         del st.session_state.user
         st.rerun()
     
     st.divider()
     with st.expander("🔐 パスワードを変更"):
-        new_pw = st.text_input("新しいパスワード", type="password", key="change_pw_input")
-        conf_pw = st.text_input("確認用", type="password", key="change_pw_conf")
-        if st.button("更新", use_container_width=True, key="pw_update_btn"):
+        new_pw = st.text_input("新しいパスワード", type="password")
+        conf_pw = st.text_input("確認用", type="password")
+        if st.button("更新", use_container_width=True):
             if len(new_pw) >= 6 and new_pw == conf_pw:
                 supabase.auth.update_user({"password": new_pw})
                 st.success("更新完了！")
@@ -166,11 +166,13 @@ with st.sidebar:
     st.subheader("💰 給与設定")
     if "hourly_wage" not in st.session_state: st.session_state.hourly_wage = 1200
     if "fixed_salary" not in st.session_state: st.session_state.fixed_salary = 0
+    
     col_wage, col_fixed = st.columns(2)
-    st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10, key="wage_input")
-    st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000, key="fixed_input")
-    if st.button("給料設定を保存", use_container_width=True, key="save_salary_btn"):
-        st.success("保存しました")
+    st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
+    st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000)
+    
+    if st.button("給料設定を保存", use_container_width=True):
+        st.success("セッションに保存しました")
 
     st.divider()
     if st.toggle("新規予定を追加"):
@@ -192,7 +194,7 @@ with st.sidebar:
                     }).execute()
                     st.rerun()
 
-# --- 9. メイン画面：給与 & カレンダー ---
+# --- 9. メイン画面：給与 & カレンダー (修正版) ---
 st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
 
 monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly_wage, st.session_state.fixed_salary)
@@ -212,26 +214,42 @@ with col_b:
             r = sorted(future, key=lambda x: x['reminder_at'])[0]
             st.warning(f"🔔 リマインド: {r['reminder_at']} [{r['category']}] {r['title']}")
 
-# カレンダー表示データの準備
-events = []
+# イベントデータの準備（タイムゾーンとallDay属性の修正）
+formatted_events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 for item in current_todos:
-    raw_start, raw_end = datetime.fromisoformat(item['start_at']), datetime.fromisoformat(item['end_at'])
-    local_start, local_end = raw_start.astimezone(JST).replace(tzinfo=None), raw_end.astimezone(JST).replace(tzinfo=None)
+    s_dt = datetime.fromisoformat(item['start_at']).astimezone(JST)
+    e_dt = datetime.fromisoformat(item['end_at']).astimezone(JST)
     prefix = "✅ " if item.get('is_complete') else ""
-    events.append({
-        "id": str(item['id']), "title": f"{prefix}[{item['category']}]\n{item['title']}",
-        "start": local_start.isoformat(), "end": local_end.isoformat(),
+    
+    formatted_events.append({
+        "id": str(item['id']),
+        "title": f"{prefix}[{item['category']}]\n{item['title']}",
+        "start": s_dt.isoformat(),
+        "end": e_dt.isoformat(),
         "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
-        "borderColor": "transparent"
+        "borderColor": "transparent",
+        "allDay": False # week/dayビューで時間枠に表示するために必須
     })
 
 cal_options = {
-    "editable": "true", "selectable": "true", "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
-    "initialView": "dayGridMonth", "locale": "ja", "dayMaxEvents": False, "contentHeight": "auto", "eventDisplay": "block",
-    "displayEventTime": True, "displayEventEnd": True, "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
+    "editable": "true",
+    "selectable": "true",
+    "headerToolbar": {
+        "left": "today prev,next",
+        "center": "title",
+        "right": "dayGridMonth,timeGridWeek,timeGridDay"
+    },
+    "initialView": "dayGridMonth",
+    "locale": "ja",
+    "allDaySlot": False,
+    "slotMinTime": "06:00:00",
+    "slotMaxTime": "24:00:00",
+    "contentHeight": "auto",
+    "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
-state = calendar(events=events, options=cal_options, key="manetime_cal")
+
+state = calendar(events=formatted_events, options=cal_options, key="manetime_cal")
 
 # --- 10. イベント処理 ---
 if state.get("eventClick"):
