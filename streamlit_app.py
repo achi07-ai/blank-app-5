@@ -147,7 +147,7 @@ def show_event_details(event_id):
 with st.sidebar:
     st.markdown(f"## {APP_NAME}")
     st.write(f"👤 {st.session_state.user.email}")
-    if st.button("ログアウト", use_container_width=True):
+    if st.button("ログアウト", use_container_width=True, key="logout_btn"):
         supabase.auth.sign_out()
         if "user" in st.session_state:
             del st.session_state.user
@@ -155,9 +155,9 @@ with st.sidebar:
     
     st.divider()
     with st.expander("🔐 パスワードを変更"):
-        new_pw = st.text_input("新しいパスワード", type="password")
-        conf_pw = st.text_input("確認用", type="password")
-        if st.button("更新", use_container_width=True):
+        new_pw = st.text_input("新しいパスワード", type="password", key="new_pw")
+        conf_pw = st.text_input("確認用", type="password", key="conf_pw")
+        if st.button("更新", use_container_width=True, key="pw_btn"):
             if len(new_pw) >= 6 and new_pw == conf_pw:
                 supabase.auth.update_user({"password": new_pw})
                 st.success("更新完了！")
@@ -169,10 +169,10 @@ with st.sidebar:
     if "fixed_salary" not in st.session_state: st.session_state.fixed_salary = 0
     
     col_wage, col_fixed = st.columns(2)
-    st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10)
-    st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000)
+    st.session_state.hourly_wage = col_wage.number_input("時給 (円)", value=st.session_state.hourly_wage, step=10, key="wage_input")
+    st.session_state.fixed_salary = col_fixed.number_input("固定給 (円)", value=st.session_state.fixed_salary, step=1000, key="fixed_input")
     
-    if st.button("給料設定を保存", use_container_width=True):
+    if st.button("給料設定を保存", use_container_width=True, key="save_salary"):
         st.success("セッションに保存しました")
 
     st.divider()
@@ -267,3 +267,4 @@ if state.get("eventChange"):
     supabase.table("todos").update(upd).eq("id", event_id).execute()
     st.toast("予定を移動しました！")
     st.rerun()
+    
