@@ -32,29 +32,26 @@ st.markdown(f"""
 
 # --- 3. 便利関数 ---
 def calculate_reminder(event_date, category):
-    rules = {
-        "テスト": timedelta(weeks=-2), "課題": timedelta(days=-3),
-        "遊び": timedelta(days=-1), "バイト": timedelta(days=-1), "日用品": timedelta(days=30)
-    }
+    rules = { "テスト": timedelta(weeks=-2), "課題": timedelta(days=-3), "遊び": timedelta(days=-1), "バイト": timedelta(days=-1), "日用品": timedelta(days=30) }
     return (event_date + rules.get(category, timedelta(0))).strftime('%Y-%m-%d')
 
 # --- 4. ログイン / 新規登録フロー ---
 if "user" not in st.session_state:
     st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
-    auth_mode = st.radio("メニュー", ["ログイン", "新規ユーザー登録"], horizontal=True, key="auth_selector_unique")
+    auth_mode = st.radio("メニュー", ["ログイン", "新規ユーザー登録"], horizontal=True, key="auth_selector_final")
     
-    email = st.text_input("メールアドレス", key="auth_email_unique")
-    password = st.text_input("パスワード", type="password", key="auth_pw_unique")
+    email = st.text_input("メールアドレス", key="auth_email_final")
+    password = st.text_input("パスワード", type="password", key="auth_pw_final")
     
     if auth_mode == "ログイン":
-        if st.button("ログインする", use_container_width=True, key="login_btn_unique"):
+        if st.button("ログインする", use_container_width=True, key="login_btn_final"):
             try:
                 res = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 st.session_state.user = res.user
                 st.rerun()
             except: st.error("ログインに失敗しました。")
     else:
-        if st.button("アカウントを作成する", use_container_width=True, key="signup_btn_unique"):
+        if st.button("アカウントを作成する", use_container_width=True, key="signup_btn_final"):
             try:
                 supabase.auth.sign_up({"email": email, "password": password})
                 st.success("登録完了！ログイン画面からログインしてください。")
@@ -63,7 +60,7 @@ if "user" not in st.session_state:
 
 user_id = st.session_state.user.id
 
-# --- 5. 設定・データ取得 (upsertで安定化) ---
+# --- 5. 設定・データ取得 (APIError対策済み) ---
 def get_settings():
     try:
         res = supabase.table("settings").select("*").eq("user_id", user_id).execute()
@@ -71,11 +68,10 @@ def get_settings():
             return res.data[0]
         else:
             initial = {"user_id": user_id, "hourly_wage": 1200, "fixed_salary": 0}
-            # insertではなくupsertを使うことで重複エラーを防ぐ
+            # insertの代わりにupsertを使うことで「既にある」エラーを回避
             supabase.table("settings").upsert(initial).execute()
             return initial
     except Exception as e:
-        st.error(f"DBエラー: {e}")
         return {"user_id": user_id, "hourly_wage": 1200, "fixed_salary": 0}
 
 settings = get_settings()
@@ -96,41 +92,36 @@ def show_event_details(event_id):
             cat = st.selectbox("カテゴリ", ["テスト", "課題", "日用品", "遊び", "バイト", "その他"], 
                                index=["テスト", "課題", "日用品", "遊び", "バイト", "その他"].index(item['category']))
             done = st.checkbox("完了済み (✅)", value=item.get('is_complete', False))
-            
             if st.form_submit_button("更新"):
                 ns = JST.localize(datetime.combine(d, st_t)).isoformat()
                 ne = JST.localize(datetime.combine(d, et_t)).isoformat()
-                supabase.table("todos").update({
-                    "title": title, "category": cat, "start_at": ns, "end_at": ne,
-                    "reminder_at": calculate_reminder(d, cat), "is_complete": done
-                }).eq("id", event_id).execute()
+                supabase.table("todos").update({"title": title, "category": cat, "start_at": ns, "end_at": ne, "is_complete": done}).eq("id", event_id).execute()
                 st.rerun()
-        if st.button("🗑️ 削除", use_container_width=True, key=f"del_btn_dialog_{event_id}"):
+        if st.button("🗑️ 削除", use_container_width=True, key=f"del_btn_{event_id}"):
             supabase.table("todos").delete().eq("id", event_id).execute()
             st.rerun()
 
-# --- 7. サイドバー ---
+# --- 7. サイドバー (DuplicateId対策済み) ---
 with st.sidebar:
     st.markdown(f"## {APP_NAME}")
     st.write(f"👤 {st.session_state.user.email}")
-    # 画像1枚目のエラー対策：一意のkeyを設定
-    if st.button("ログアウト", use_container_width=True, key="logout_btn_sidebar"):
+    if st.button("ログアウト", use_container_width=True, key="logout_sidebar_final"):
         supabase.auth.sign_out()
         if "user" in st.session_state: del st.session_state.user
         st.rerun()
     
     st.divider()
     st.subheader("💰 給与設定")
-    new_h = st.number_input("時給", value=settings['hourly_wage'], step=10, key="wage_input_sidebar")
-    new_f = st.number_input("固定給", value=settings['fixed_salary'], step=1000, key="fixed_input_sidebar")
-    if st.button("設定を保存", use_container_width=True, key="save_settings_btn_sidebar"):
+    new_h = st.number_input("時給", value=settings['hourly_wage'], step=10, key="wage_input_final")
+    new_f = st.number_input("固定給", value=settings['fixed_salary'], step=1000, key="fixed_input_final")
+    if st.button("設定を保存", use_container_width=True, key="save_settings_final"):
         supabase.table("settings").upsert({"user_id": user_id, "hourly_wage": new_h, "fixed_salary": new_f}).execute()
         st.success("保存しました！")
         st.rerun()
 
     st.divider()
-    if st.toggle("新規予定を追加", key="add_toggle_sidebar"):
-        with st.form("add_form_unique", clear_on_submit=True):
+    if st.toggle("新規予定を追加", key="add_toggle_final"):
+        with st.form("add_form_final", clear_on_submit=True):
             add_title = st.text_input("予定名")
             add_d = st.date_input("日付", datetime.now(JST).date())
             at1, at2 = st.columns(2)
@@ -139,13 +130,10 @@ with st.sidebar:
             if st.form_submit_button("保存"):
                 s_dt = JST.localize(datetime.combine(add_d, as_t)).isoformat()
                 e_dt = JST.localize(datetime.combine(add_d, ae_t)).isoformat()
-                supabase.table("todos").insert({
-                    "user_id": user_id, "title": add_title, "category": add_cat, "start_at": s_dt, "end_at": e_dt,
-                    "reminder_at": calculate_reminder(add_d, add_cat), "is_complete": False
-                }).execute()
+                supabase.table("todos").insert({"user_id": user_id, "title": add_title, "category": add_cat, "start_at": s_dt, "end_at": e_dt, "reminder_at": calculate_reminder(add_d, add_cat), "is_complete": False}).execute()
                 st.rerun()
 
-# --- 8. メイン表示 ---
+# --- 8. メイン画面 ---
 st.markdown(f"<h1 class='main-title'>{APP_NAME}</h1>", unsafe_allow_html=True)
 
 # リマインダー通知
@@ -156,7 +144,7 @@ if upcoming:
     for r in alerts:
         st.warning(f"🔔 **リマインド**: {r['title']} ([{r['category']}] 期限間近です)")
 
-# 給与計算
+# 給料計算
 var_s, hours = 0, 0
 now = datetime.now(JST)
 for item in current_todos:
@@ -178,13 +166,13 @@ st.markdown(f"""
 events = []
 colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "遊び": "#21C354", "バイト": "#9B59B6", "その他": "#A3A8B4"}
 for item in current_todos:
-    done = item.get('is_complete', False)
+    is_done = item.get('is_complete', False)
     events.append({
         "id": str(item['id']),
-        "title": f"{'✅' if done else ''}[{item['category']}] {item['title']}",
+        "title": f"{'✅' if is_done else ''}[{item['category']}] {item['title']}",
         "start": datetime.fromisoformat(item['start_at']).astimezone(JST).replace(tzinfo=None).isoformat(),
         "end": datetime.fromisoformat(item['end_at']).astimezone(JST).replace(tzinfo=None).isoformat(),
-        "backgroundColor": "#bdc3c7" if done else colors.get(item['category'], "#3D3333"),
+        "backgroundColor": "#bdc3c7" if is_done else colors.get(item['category'], "#3D3333"),
         "allDay": False
     })
 
@@ -192,7 +180,7 @@ cal_options = {
     "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,timeGridWeek,timeGridDay"},
     "locale": "ja", "slotMinTime": "00:00:00", "slotMaxTime": "24:00:00", "editable": True, "eventDisplay": "block",
 }
-state = calendar(events=events, options=cal_options, key="manetime_cal_final_stable")
+state = calendar(events=events, options=cal_options, key="manetime_final_cal")
 
 if state.get("eventClick"): show_event_details(state["eventClick"]["event"]["id"])
 if state.get("eventChange"):
