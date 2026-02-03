@@ -65,18 +65,18 @@ user_id = st.session_state.user.id
 # --- 5. 設定・データ取得 (永続化) ---
 def get_settings():
     try:
+        # 1. データの取得を試みる
         res = supabase.table("settings").select("*").eq("user_id", user_id).execute()
         if res.data and len(res.data) > 0:
             return res.data[0]
         else:
+            # 2. データがない場合のみ初期値を作成（upsertで安全に）
             initial = {"user_id": user_id, "hourly_wage": 1200, "fixed_salary": 0}
             supabase.table("settings").upsert(initial).execute()
             return initial
-    except Exception:
+    except Exception as e:
+        # 3. 万が一のエラー時はデフォルト値を返す（アプリを止めない）
         return {"user_id": user_id, "hourly_wage": 1200, "fixed_salary": 0}
-
-settings = get_settings()
-current_todos = supabase.table("todos").select("*").eq("user_id", user_id).execute().data
 
 # --- 6. 給料計算ロジック ---
 def get_salary_info(todos, hourly_wage, fixed_salary):
