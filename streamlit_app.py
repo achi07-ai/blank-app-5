@@ -35,16 +35,17 @@ st.markdown(f"""
         color: #666;
         margin-bottom: 2rem;
     }}
-    /* カレンダーの高さを広げる設定 */
-    .fc-scroller {{
-        overflow: visible !important;
-    }}
+    /* カレンダーの表示エリアを最適化 */
     .salary-box {{
         background-color: #f0f2f6;
         padding: 15px;
         border-radius: 10px;
         border-left: 5px solid #9B59B6;
         margin-bottom: 10px;
+    }}
+    /* カレンダー内のフォントサイズ微調整 */
+    .fc-timegrid-slot {{
+        height: 40px !important; /* 1コマの高さを少し詰めました */
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -211,7 +212,7 @@ for item in current_todos:
         "borderColor": "transparent",
     })
 
-# カレンダー表示オプション（高さと時間範囲を調整）
+# カレンダー表示オプション（高さ制限を撤廃）
 cal_options = {
     "editable": "true",
     "selectable": "true",
@@ -224,13 +225,13 @@ cal_options = {
     "locale": "ja",
     "slotMinTime": "00:00:00",
     "slotMaxTime": "24:00:00",
-    "height": 800,           # 高さを800ピクセルに固定
-    "expandRows": "true",    # 行を高さに合わせて広げる
+    "height": "auto",           # 固定ではなく中身に合わせて自動調整
+    "expandRows": "true",
     "stickyHeaderDates": "true",
     "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
 
-state = calendar(events=formatted_events, options=cal_options, key="manetime_cal_v3")
+state = calendar(events=formatted_events, options=cal_options, key="manetime_cal_final")
 
 # --- 10. イベント処理 ---
 if state.get("eventClick"):
