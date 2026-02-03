@@ -139,7 +139,17 @@ with st.sidebar:
             if st.form_submit_button("保存"):
                 s_iso = JST.localize(datetime.combine(d, s_t)).isoformat()
                 e_iso = JST.localize(datetime.combine(d, e_t)).isoformat()
-                supabase.table("todos").insert({"user_id": user_id, "title": title, "category": cat, "start_at": s_iso, "end_at": e_iso, "reminder_at": calculate_reminder(d, cat), "is_complete": False}).execute()
+                # insert ではなく upsert に書き換えることで、重複エラーを防ぎます
+                supabase.table（”todos”）.upsert（｛
+                   "user_id": user_id, 
+                   "title": title, 
+                   "category": cat,
+                   "start_at": s_dt, 
+                   "end_at": e_dt,
+                   "reminder_at": calculate_reminder(d, cat), 
+                   "is_complete": False
+                }).
+                execute()
                 st.rerun()
 
 # --- 9. メイン画面 ---
