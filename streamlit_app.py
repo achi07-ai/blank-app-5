@@ -35,18 +35,9 @@ st.markdown(f"""
         color: #666;
         margin-bottom: 2rem;
     }}
-    .fc-event-title {{
-        font-weight: bold !important;
-        white-space: pre-wrap !important;
-        font-size: 0.9em !important;
-        padding: 4px !important;
-        line-height: 1.2 !important;
-    }}
-    .fc-daygrid-day-frame {{
-        min-height: 120px !important;
-    }}
-    .fc-event {{
-        cursor: pointer;
+    /* カレンダーの高さを広げる設定 */
+    .fc-scroller {{
+        overflow: visible !important;
     }}
     .salary-box {{
         background-color: #f0f2f6;
@@ -154,17 +145,6 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    with st.expander("🔐 パスワードを変更"):
-        new_pw = st.text_input("新しいパスワード", type="password", key="new_pw")
-        conf_pw = st.text_input("確認用", type="password", key="conf_pw")
-        if st.button("更新", use_container_width=True, key="pw_btn"):
-            if len(new_pw) >= 6 and new_pw == conf_pw:
-                supabase.auth.update_user({"password": new_pw})
-                st.success("更新完了！")
-            else:
-                st.error("不備があります")
-
-    st.divider()
     st.subheader("💰 給与設定")
     if "hourly_wage" not in st.session_state: st.session_state.hourly_wage = 1200
     if "fixed_salary" not in st.session_state: st.session_state.fixed_salary = 0
@@ -203,7 +183,7 @@ monthly_salary = calculate_monthly_salary(current_todos, st.session_state.hourly
 col_a, col_b = st.columns([1, 2])
 with col_a:
     st.markdown(f"""<div class="salary-box">
-        <p style='margin:0; font-size:0.9em; color:#666;'>💰 今月の見込み給与 (時給+固定)</p>
+        <p style='margin:0; font-size:0.9em; color:#666;'>💰 今月の見込み給与</p>
         <h2 style='margin:0; color:#9B59B6;'>¥{monthly_salary:,}</h2>
     </div>""", unsafe_allow_html=True)
 
@@ -222,19 +202,16 @@ colors = {"テスト": "#FF4B4B", "課題": "#FFA421", "日用品": "#7792E3", "
 for item in current_todos:
     s_dt = datetime.fromisoformat(item['start_at']).astimezone(JST)
     e_dt = datetime.fromisoformat(item['end_at']).astimezone(JST)
-    prefix = "✅ " if item.get('is_complete') else ""
-    
     formatted_events.append({
         "id": str(item['id']),
-        "title": f"{prefix}[{item['category']}]\n{item['title']}",
+        "title": f"[{item['category']}] {item['title']}",
         "start": s_dt.isoformat(),
         "end": e_dt.isoformat(),
-        "backgroundColor": "#D3D3D3" if item.get('is_complete') else colors.get(item['category'], "#3D3333"),
+        "backgroundColor": colors.get(item['category'], "#3D3333"),
         "borderColor": "transparent",
-        "allDay": False
     })
 
-# カレンダー表示オプション（0-24時を確実に固定）
+# カレンダー表示オプション（高さと時間範囲を調整）
 cal_options = {
     "editable": "true",
     "selectable": "true",
@@ -245,20 +222,15 @@ cal_options = {
     },
     "initialView": "dayGridMonth",
     "locale": "ja",
-    "allDaySlot": False,
     "slotMinTime": "00:00:00",
     "slotMaxTime": "24:00:00",
-    "scrollTime": "08:00:00", # 最初に見える位置を朝8時に設定（スクロールで0時に戻れます）
-    "contentHeight": "auto",
+    "height": 800,           # 高さを800ピクセルに固定
+    "expandRows": "true",    # 行を高さに合わせて広げる
+    "stickyHeaderDates": "true",
     "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
 
-# 修正：keyに最新データ件数を含めることで強制リロードを誘発
-state = calendar(
-    events=formatted_events, 
-    options=cal_options, 
-    key=f"manetime_v2_{len(formatted_events)}" 
-)
+state = calendar(events=formatted_events, options=cal_options, key="manetime_cal_v3")
 
 # --- 10. イベント処理 ---
 if state.get("eventClick"):
@@ -268,10 +240,7 @@ if state.get("eventChange"):
     event_id = state["eventChange"]["event"]["id"]
     new_s = datetime.fromisoformat(state["eventChange"]["event"]["start"].replace('Z', '+00:00')).astimezone(JST).isoformat()
     new_e = datetime.fromisoformat(state["eventChange"]["event"]["end"].replace('Z', '+00:00')).astimezone(JST).isoformat() if state["eventChange"]["event"].get("end") else None
-    
     upd = {"start_at": new_s}
     if new_e: upd["end_at"] = new_e
-    
     supabase.table("todos").update(upd).eq("id", event_id).execute()
-    st.toast("予定を移動しました！")
     st.rerun()
