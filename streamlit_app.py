@@ -234,6 +234,7 @@ for item in current_todos:
         "allDay": False
     })
 
+# カレンダー表示オプション（0-24時を確実に固定）
 cal_options = {
     "editable": "true",
     "selectable": "true",
@@ -245,13 +246,19 @@ cal_options = {
     "initialView": "dayGridMonth",
     "locale": "ja",
     "allDaySlot": False,
-    "slotMinTime": "00:00:00",  # 修正：0時から表示
-    "slotMaxTime": "24:00:00",  # 修正：24時まで表示
+    "slotMinTime": "00:00:00",
+    "slotMaxTime": "24:00:00",
+    "scrollTime": "08:00:00", # 最初に見える位置を朝8時に設定（スクロールで0時に戻れます）
     "contentHeight": "auto",
     "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
 
-state = calendar(events=formatted_events, options=cal_options, key="manetime_cal")
+# 修正：keyに最新データ件数を含めることで強制リロードを誘発
+state = calendar(
+    events=formatted_events, 
+    options=cal_options, 
+    key=f"manetime_v2_{len(formatted_events)}" 
+)
 
 # --- 10. イベント処理 ---
 if state.get("eventClick"):
