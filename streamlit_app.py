@@ -103,8 +103,7 @@ def calculate_monthly_salary(todos, hourly_wage, fixed_salary):
     now = datetime.now(JST)
     for item in todos:
         if item['category'] == "バイト":
-            start_at_raw = item['start_at']
-            start_dt = datetime.fromisoformat(start_at_raw).astimezone(JST)
+            start_dt = datetime.fromisoformat(item['start_at']).astimezone(JST)
             if start_dt.month == now.month and start_dt.year == now.year:
                 end_dt = datetime.fromisoformat(item['end_at']).astimezone(JST)
                 duration = end_dt - start_dt
@@ -140,20 +139,4 @@ def show_event_details(event_id):
                 }).eq("id", event_id).execute()
                 st.rerun()
         st.divider()
-        if st.button("🗑️ この予定を削除する", use_container_width=True, type="secondary"):
-            supabase.table("todos").delete().eq("id", event_id).execute()
-            st.rerun()
-
-# --- 8. サイドバー (修正版) ---
-with st.sidebar:
-    st.markdown(f"## {APP_NAME}")
-    st.write(f"👤 {st.session_state.user.email}")
-    if st.button("ログアウト", use_container_width=True):
-        supabase.auth.sign_out()
-        del st.session_state.user
-        st.rerun()
-    
-    st.divider()
-    with st.expander("🔐 パスワードを変更"):
-        new_pw = st.text_input("新しいパスワード", type="password")
-        conf_pw = st.text_input("確認用",
+        if st.button("🗑️ この予定を削除する", use
