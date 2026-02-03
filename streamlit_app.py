@@ -161,7 +161,8 @@ with st.sidebar:
             if len(new_pw) >= 6 and new_pw == conf_pw:
                 supabase.auth.update_user({"password": new_pw})
                 st.success("更新完了！")
-            else: st.error("不備があります")
+            else:
+                st.error("不備があります")
 
     st.divider()
     st.subheader("💰 給与設定")
@@ -267,4 +268,3 @@ if state.get("eventChange"):
     supabase.table("todos").update(upd).eq("id", event_id).execute()
     st.toast("予定を移動しました！")
     st.rerun()
-    
