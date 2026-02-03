@@ -245,8 +245,8 @@ cal_options = {
     "initialView": "dayGridMonth",
     "locale": "ja",
     "allDaySlot": False,
-    "slotMinTime": "06:00:00",
-    "slotMaxTime": "24:00:00",
+    "slotMinTime": "00:00:00",  # 修正：0時から表示
+    "slotMaxTime": "24:00:00",  # 修正：24時まで表示
     "contentHeight": "auto",
     "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "hour12": False}
 }
